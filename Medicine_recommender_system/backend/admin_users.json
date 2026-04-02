@@ -1,0 +1,28 @@
+[
+  {
+    "id": "57264f7c-c7bd-4430-a3cb-5aa728499698",
+    "name": "System Admin",
+    "email": "admin@healthconnect.com",
+    "password": "$2b$10$CsTzsSTTXd/mIBs3RyT8m.XmyD96yhAHZcTF/LltErUhnxdAi/Wma",
+    "role": "company_admin",
+    "is_verified": false,
+    "specialty": null,
+    "license_number": null,
+    "experience_years": null,
+    "created_at": "2026-03-15T19:59:24.710Z",
+    "updated_at": "2026-03-15T19:59:24.710Z"
+  },
+  {
+    "id": "d7a7651a-224b-43b2-a8ff-134df933892a",
+    "name": "tryt hgygh",
+    "email": "hgjff@gmail.com",
+    "password": "$2b$10$D2tfRWEJPzj.8f7uBi7g8OGPzHR2vuWkTOrVJRXuWQwhaF.azdRA2",
+    "role": "company_admin",
+    "is_verified": false,
+    "specialty": null,
+    "license_number": null,
+    "experience_years": null,
+    "created_at": "2026-03-15T20:14:02.644Z",
+    "updated_at": "2026-03-15T20:14:02.644Z"
+  }
+]
