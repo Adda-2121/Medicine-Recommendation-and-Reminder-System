@@ -2,12 +2,18 @@ import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import api from '../services/api';
 import { Bell, Plus, Clock, Pill, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import toast from 'react-hot-toast';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 
 const Reminders = () => {
+  const { t } = useTranslation();
   const { user } = useContext(AuthContext);
   const [reminders, setReminders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  
+  const [modalConfig, setModalConfig] = useState({ isOpen: false, id: null });
   
   // For Patient adding their own or Admin adding for any patient
   const [newReminder, setNewReminder] = useState({
@@ -55,16 +61,19 @@ const Reminders = () => {
       fetchReminders();
     } catch (err) {
       console.error(err);
-      alert('Failed to add reminder');
+      toast.error('Failed to add reminder');
     }
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this reminder?')) {
-      alert('Mock Delete functionality for reminder ' + id);
-      // await api.delete(`/reminders/${id}`);
-      // fetchReminders();
-    }
+  const confirmDelete = (id) => {
+    setModalConfig({ isOpen: true, id });
+  };
+
+  const executeDelete = async () => {
+    toast.success('Mock Delete functionality for reminder ' + modalConfig.id);
+    // await api.delete(`/reminders/${modalConfig.id}`);
+    // fetchReminders();
+    setModalConfig({ isOpen: false, id: null });
   };
 
   return (
@@ -72,28 +81,28 @@ const Reminders = () => {
       {/* Header */}
       <div className="flex justify-between items-center mb-8 pb-4 border-b border-slate-200">
         <div>
-          <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Reminders</h1>
+          <h1 className="text-3xl font-bold text-slate-800 tracking-tight">{t('reminders.title')}</h1>
           <p className="text-slate-500 mt-1 text-sm md:text-base">
-            {user.role === 'patient' ? 'Manage your medication schedule and appointments.' : 'Manage patient reminders and schedules.'}
+            {user.role === 'patient' ? t('reminders.descPatient') : t('reminders.descAdmin')}
           </p>
         </div>
         <button 
           onClick={() => setShowForm(!showForm)}
           className="bg-primary-600 text-white px-5 py-2.5 rounded-lg flex items-center hover:bg-primary-700 transition shadow-sm font-medium"
         >
-          {showForm ? 'Cancel' : <><Plus size={20} className="mr-2" /> Add Reminder</>}
+          {showForm ? t('reminders.cancel') : <><Plus size={20} className="mr-2" /> {t('reminders.addReminder')}</>}
         </button>
       </div>
 
       {showForm && (
         <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 mb-8 max-w-2xl">
           <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
-            <Bell className="mr-2 text-primary-500" size={20} /> Create New Reminder
+            <Bell className="mr-2 text-primary-500" size={20} /> {t('reminders.createNew')}
           </h3>
           <form onSubmit={handleAddReminder} className="space-y-4">
             {user.role !== 'patient' && (
               <div>
-                 <label className="block text-sm font-medium text-slate-700 mb-1">Patient ID</label>
+                 <label className="block text-sm font-medium text-slate-700 mb-1">{t('reminders.patientId')}</label>
                  <input 
                    type="number" required
                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
@@ -103,7 +112,7 @@ const Reminders = () => {
             )}
             {user.role !== 'patient' && (
               <div>
-                 <label className="block text-sm font-medium text-slate-700 mb-1">Treatment Plan ID (Optional)</label>
+                 <label className="block text-sm font-medium text-slate-700 mb-1">{t('reminders.treatmentPlanId')}</label>
                  <input 
                    type="number" 
                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
@@ -113,18 +122,18 @@ const Reminders = () => {
             )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                 <label className="block text-sm font-medium text-slate-700 mb-1">Reminder Type</label>
+                 <label className="block text-sm font-medium text-slate-700 mb-1">{t('reminders.reminderType')}</label>
                  <select 
                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
                    value={newReminder.reminder_type} onChange={e => setNewReminder({...newReminder, reminder_type: e.target.value})}
                  >
-                   <option value="medicine">Medicine Intake</option>
-                   <option value="follow_up">Follow Up Consultation</option>
-                   <option value="general">General Note</option>
+                   <option value="medicine">{t('reminders.medIntake')}</option>
+                   <option value="follow_up">{t('reminders.followUp')}</option>
+                   <option value="general">{t('reminders.generalNote')}</option>
                  </select>
               </div>
               <div>
-                 <label className="block text-sm font-medium text-slate-700 mb-1">Date & Time</label>
+                 <label className="block text-sm font-medium text-slate-700 mb-1">{t('reminders.dateTime')}</label>
                  <input 
                    type="datetime-local" required
                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
@@ -136,39 +145,39 @@ const Reminders = () => {
             {newReminder.reminder_type === 'medicine' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-200 mt-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Medicine Name</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">{t('reminders.medicineName')}</label>
                   <input
-                    type="text" placeholder="e.g. Amoxicillin" 
+                    type="text" placeholder={t('reminders.medicineNamePlaceholder')} 
                     className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
                     value={newReminder.medicine_name} onChange={(e) => setNewReminder({...newReminder, medicine_name: e.target.value})}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Medicine Type</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">{t('reminders.medicineType')}</label>
                   <select
                     className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
                     value={newReminder.medicine_type} onChange={(e) => setNewReminder({...newReminder, medicine_type: e.target.value})}
                   >
-                    <option value="Pill">Pill / Tablet</option>
-                    <option value="Syrup">Syrup / Liquid</option>
-                    <option value="Injection">Injection</option>
-                    <option value="Drops">Drops</option>
-                    <option value="Inhaler">Inhaler</option>
-                    <option value="Other">Other</option>
+                    <option value="Pill">{t('reminders.typePill')}</option>
+                    <option value="Syrup">{t('reminders.typeSyrup')}</option>
+                    <option value="Injection">{t('reminders.typeInjection')}</option>
+                    <option value="Drops">{t('reminders.typeDrops')}</option>
+                    <option value="Inhaler">{t('reminders.typeInhaler')}</option>
+                    <option value="Other">{t('reminders.typeOther')}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Dose</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">{t('reminders.dose')}</label>
                   <input
-                    type="text" placeholder="e.g. 500mg or 2 puffs"
+                    type="text" placeholder={t('reminders.dosePlaceholder')}
                     className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
                     value={newReminder.dose} onChange={(e) => setNewReminder({...newReminder, dose: e.target.value})}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Frequency Details</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">{t('reminders.frequency')}</label>
                   <input
-                    type="text" placeholder="e.g. After meals, twice a day"
+                    type="text" placeholder={t('reminders.frequencyPlaceholder')}
                     className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
                     value={newReminder.frequency} onChange={(e) => setNewReminder({...newReminder, frequency: e.target.value})}
                   />
@@ -177,7 +186,7 @@ const Reminders = () => {
             )}
             
             <div className="flex justify-end pt-4 mt-2">
-              <button type="submit" className="bg-primary-600 text-white px-6 py-2 rounded-md hover:bg-primary-700 font-medium">Save Schedule</button>
+              <button type="submit" className="bg-primary-600 text-white px-6 py-2 rounded-md hover:bg-primary-700 font-medium">{t('reminders.saveSchedule')}</button>
             </div>
           </form>
         </div>
@@ -193,11 +202,11 @@ const Reminders = () => {
           <div className="bg-white p-4 rounded-full shadow-sm mb-4">
              <Bell size={48} className="text-slate-300" />
           </div>
-          <h3 className="text-xl font-medium text-slate-700 mb-2">No Reminders Set</h3>
+          <h3 className="text-xl font-medium text-slate-700 mb-2">{t('reminders.noRemindersSet')}</h3>
           <p className="text-slate-500 max-w-sm">
             {user.role === 'patient' 
-              ? "You don't have any upcoming reminders. Use the button above to schedule your medicine intake." 
-              : "No active reminders found in the system."}
+              ? t('reminders.noRemindersPatient') 
+              : t('reminders.noRemindersAdmin')}
           </p>
         </div>
       ) : (
@@ -213,7 +222,7 @@ const Reminders = () => {
                   ${r.status === 'sent' ? 'border-slate-200 opacity-75' : pastDue ? 'border-red-300 bg-red-50/30' : 'border-slate-200 border-l-4 border-l-primary-500'}`}
               >
                 <button 
-                  onClick={() => handleDelete(r.id)}
+                  onClick={() => confirmDelete(r.id)}
                   className="absolute top-4 right-4 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"
                 >
                   <Trash2 size={18} />
@@ -229,20 +238,27 @@ const Reminders = () => {
                     <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full mb-1 inline-block
                        ${r.status === 'sent' ? 'bg-slate-100 text-slate-500' : pastDue ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}
                     >
-                      {r.status === 'sent' ? 'Sent' : pastDue ? 'Overdue' : 'Active'}
+                      {r.status === 'sent' ? t('reminders.statusSent') : pastDue ? t('reminders.statusOverdue') : t('reminders.statusActive')}
                     </span>
                     <h3 className="font-bold text-slate-800 text-lg capitalize">
                       {isMedicine && r.medicine_name ? r.medicine_name : r.reminder_type.replace('_', ' ')}
                     </h3>
                     {isMedicine && (r.dose || r.medicine_type || r.frequency) && (
                       <p className="text-sm font-medium text-slate-600 mt-1 flex flex-wrap gap-2">
-                        {r.medicine_type && <span className="bg-slate-100 px-2 py-0.5 rounded text-xs border border-slate-200">{r.medicine_type}</span>}
+                        {r.medicine_type && <span className="bg-slate-100 px-2 py-0.5 rounded text-xs border border-slate-200">
+                          {r.medicine_type === 'Pill' ? t('reminders.typePill') :
+                           r.medicine_type === 'Syrup' ? t('reminders.typeSyrup') :
+                           r.medicine_type === 'Injection' ? t('reminders.typeInjection') :
+                           r.medicine_type === 'Drops' ? t('reminders.typeDrops') :
+                           r.medicine_type === 'Inhaler' ? t('reminders.typeInhaler') :
+                           r.medicine_type === 'Other' ? t('reminders.typeOther') : r.medicine_type}
+                        </span>}
                         {r.dose && <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded text-xs border border-emerald-200">{r.dose}</span>}
                         {r.frequency && <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs border border-blue-200">{r.frequency}</span>}
                       </p>
                     )}
                     {user.role !== 'patient' && (
-                      <p className="text-sm text-slate-500 line-clamp-1 mt-0.5">Patient: {r.Patient?.name || 'Unknown'}</p>
+                      <p className="text-sm text-slate-500 line-clamp-1 mt-0.5">{t('reminders.patient')} {r.Patient?.name || 'Unknown'}</p>
                     )}
                   </div>
                 </div>
@@ -261,6 +277,16 @@ const Reminders = () => {
           })}
         </div>
       )}
+
+      <ConfirmationModal
+        isOpen={modalConfig.isOpen}
+        onClose={() => setModalConfig({ isOpen: false, id: null })}
+        onConfirm={executeDelete}
+        title={t('reminders.deleteTitle', 'Delete Reminder')}
+        message={t('reminders.confirmDelete')}
+        confirmText={t('reminders.delete', 'Delete')}
+        isDanger={true}
+      />
     </div>
   );
 };

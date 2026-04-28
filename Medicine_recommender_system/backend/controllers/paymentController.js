@@ -4,81 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 
-// @desc    Submit a payment screenshot
-// @route   POST /api/payments
-// @access  Private (Patient)
-exports.submitPayment = async (req, res) => {
-  try {
-    if (req.user.role !== 'patient') {
-      return res.status(403).json({ message: 'Only patients can submit payments' });
-    }
 
-    const { consultation_id, reference_code, amount, notes } = req.body;
-    const file = req.file;
-
-    if (!consultation_id || !reference_code || !file) {
-      return res.status(400).json({ message: 'Missing required fields or screenshot' });
-    }
-
-    // Verify consultation exists and belongs to patient
-    const consultation = await Consultation.findOne({
-      where: { id: consultation_id, patient_id: req.user.id }
-    });
-
-    if (!consultation) {
-      return res.status(404).json({ message: 'Consultation not found or unauthorized' });
-    }
-
-    const screenshot_url = `/uploads/payments/${file.filename}`;
-
-    // Create payment record. Note: Assuming one payment per consultation is allowed.
-    const existingPayment = await Payment.findOne({ where: { consultation_id } });
-    if (existingPayment) {
-      if (existingPayment.status === 'verified') {
-        return res.status(400).json({ message: 'Payment is already verified' });
-      }
-      
-      // Allow updating if it's failed, expired, or pending
-      if (existingPayment.screenshot_url) {
-        try {
-          const oldPath = path.join(__dirname, '..', existingPayment.screenshot_url);
-          if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-        } catch(err) {
-          console.error("Failed to delete old screenshot: ", err);
-        }
-      }
-
-      existingPayment.screenshot_url = screenshot_url;
-      existingPayment.reference_code = reference_code;
-      existingPayment.amount = 800; // Fixed amount
-      existingPayment.notes = notes;
-      existingPayment.status = 'pending';
-      existingPayment.admin_notes = null;
-      existingPayment.expires_at = null; // Clear old expiry
-      await existingPayment.save();
-      
-      return res.status(200).json({ message: 'Payment submitted successfully', payment: existingPayment });
-    }
-
-    const payment = await Payment.create({
-      consultation_id,
-      patient_id: req.user.id,
-      reference_code,
-      screenshot_url,
-      amount: 800, // Fixed amount
-      notes,
-      status: 'pending'
-    });
-
-    res.status(201).json({
-      message: 'Payment submitted successfully',
-      payment,
-    });
-  } catch (error) {
-    console.error('Submit payment error:', error);
-    res.status(500).json({ message: 'Server error submitting payment' });
-  }
-};
 
 // @desc    Get all payments (for admin)
 // @route   GET /api/payments
@@ -170,35 +96,4 @@ exports.verifyPayment = async (req, res) => {
   }
 };
 
-// @desc    Delete payment screenshot
-// @route   DELETE /api/payments/:id/screenshot
-// @access  Private (Patient)
-exports.deleteScreenshot = async (req, res) => {
-  try {
-    const payment = await Payment.findOne({ where: { id: req.params.id, patient_id: req.user.id } });
-    
-    if (!payment) {
-      return res.status(404).json({ message: 'Payment not found' });
-    }
 
-    if (payment.status !== 'pending') {
-      return res.status(400).json({ message: 'Can only delete screenshot for pending payments' });
-    }
-
-    if (payment.screenshot_url) {
-        try {
-          const oldPath = path.join(__dirname, '..', payment.screenshot_url);
-          if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-        } catch(err) {
-          console.error("Failed to delete screenshot: ", err);
-        }
-        payment.screenshot_url = null;
-        await payment.save();
-    }
-
-    res.status(200).json({ message: 'Screenshot deleted successfully' });
-  } catch (error) {
-    console.error('Delete screenshot error:', error);
-    res.status(500).json({ message: 'Server error deleting screenshot' });
-  }
-};

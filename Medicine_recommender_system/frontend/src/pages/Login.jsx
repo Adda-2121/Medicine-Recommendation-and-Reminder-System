@@ -2,8 +2,10 @@ import React, { useState, useContext, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
 import { Activity, Eye, EyeOff } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const Login = () => {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -44,15 +46,15 @@ const Login = () => {
           <div className="bg-primary-500 text-white p-3 rounded-full inline-block mb-3 shadow-md">
             <Activity size={28} />
           </div>
-          <h2 className="text-3xl font-bold text-slate-800">Welcome Back</h2>
-          <p className="text-slate-500 text-sm mt-1">Sign in to your HealthConnect account</p>
+          <h2 className="text-3xl font-bold text-slate-800">{t('auth.login.title')}</h2>
+          <p className="text-slate-500 text-sm mt-1">{t('auth.login.subtitle')}</p>
         </div>
 
         {error && <div className="bg-red-50 text-red-600 p-3 rounded mb-4 text-sm font-medium border border-red-200">{error}</div>}
         
         <form onSubmit={handleSubmit} autoComplete="off" className="relative z-10 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">{t('auth.login.emailLabel')}</label>
             <input 
               type="email" 
               name="email"
@@ -60,12 +62,12 @@ const Login = () => {
               className="w-full border-slate-300 border rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" 
               value={email} 
               onChange={(e) => setEmail(e.target.value)} 
-              placeholder="Enter your email"
+              placeholder={t('auth.login.emailPlaceholder')}
               required 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">{t('auth.login.passwordLabel')}</label>
             <div className="relative">
               <input 
                 type={showPassword ? "text" : "password"} 
@@ -74,7 +76,7 @@ const Login = () => {
                 className="w-full border-slate-300 border rounded-md p-3 pr-10 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" 
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)} 
-                placeholder="••••••••"
+                placeholder={t('auth.login.passwordPlaceholder')}
                 required 
               />
               <button
@@ -87,7 +89,7 @@ const Login = () => {
               </button>
             </div>
             <div className="text-right mt-1">
-              <Link to="/forgot-password" className="text-sm text-primary-600 hover:text-primary-800 transition">Forgot Password?</Link>
+              <Link to="/forgot-password" className="text-sm text-primary-600 hover:text-primary-800 transition">{t('auth.login.forgotPassword')}</Link>
             </div>
           </div>
           <button 
@@ -95,12 +97,12 @@ const Login = () => {
             disabled={loading}
             className="w-full bg-primary-600 text-white font-medium p-3 rounded-md hover:bg-primary-700 transition duration-200 shadow-md transform hover:-translate-y-0.5 mt-2 disabled:bg-primary-400 disabled:transform-none"
           >
-            {loading ? 'Signing in...' : 'Sign In'}
+            {loading ? t('auth.login.submitButtonLoading') : t('auth.login.submitButton')}
           </button>
         </form>
         
         <div className="mt-6 text-center text-sm text-slate-600 relative z-10">
-          Don't have an account? <Link to="/register" className="text-primary-600 font-semibold hover:underline">Register here</Link>
+          {t('auth.login.noAccount')} <Link to="/register" className="text-primary-600 font-semibold hover:underline">{t('auth.login.registerLink')}</Link>
         </div>
       </div>
     </div>

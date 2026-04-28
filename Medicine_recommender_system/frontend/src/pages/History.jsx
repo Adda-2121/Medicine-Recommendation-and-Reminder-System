@@ -2,7 +2,8 @@ import React, { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
 import api from '../services/api';
-import { History as HistoryIcon, Search, Filter, FileText, ChevronRight } from 'lucide-react';
+import { History as HistoryIcon, Search, Filter, FileText, ChevronRight, Star, MessageSquare } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const History = () => {
   const { user } = useContext(AuthContext);
@@ -12,22 +13,64 @@ const History = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDate, setFilterDate] = useState('all');
 
+  // Feedback Modal State
+  const [feedbackModal, setFeedbackModal] = useState({ isOpen: false, serviceId: null, type: null, doctorName: '' });
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [myTestimonials, setMyTestimonials] = useState([]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [histRes, testRes] = await Promise.all([
+        api.get('/consultations'),
+        api.get('/testimonials/my').catch(() => ({ data: [] }))
+      ]);
+      setHistory(histRes.data);
+      setMyTestimonials(testRes.data);
+    } catch (err) {
+      console.error('Failed to fetch data', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchHistory = async () => {
-      try {
-        setLoading(true);
-        const res = await api.get('/consultations');
-        // Filter out completed ones for the history view, or show all depending on requirements.
-        // Let's show all for a comprehensive history, but highlight completed ones.
-        setHistory(res.data);
-      } catch (err) {
-        console.error('Failed to fetch history', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchHistory();
+    fetchData();
   }, []);
+
+  const openFeedback = (e, record) => {
+    e.stopPropagation();
+    setFeedbackModal({
+      isOpen: true,
+      serviceId: record.id,
+      type: 'consultation',
+      doctorName: record.Doctor?.name || 'Doctor'
+    });
+    setRating(0);
+    setComment('');
+  };
+
+  const submitFeedback = async () => {
+    if (rating === 0) return toast.error('Please select a rating');
+    setIsSubmitting(true);
+    try {
+      await api.post('/testimonials', {
+        service_id: feedbackModal.serviceId,
+        service_type: feedbackModal.type,
+        rating,
+        comment
+      });
+      toast.success('Feedback submitted successfully!');
+      setFeedbackModal({ isOpen: false, serviceId: null, type: null, doctorName: '' });
+      fetchData(); // Refresh to update "Already Reviewed" status
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to submit feedback');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const filteredHistory = history.filter(c => {
     const matchesSearch = 
@@ -124,7 +167,7 @@ const History = () => {
                        ${record.status === 'completed' ? 'bg-green-100 text-green-700' : 
                          record.status === 'in_progress' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}
                     `}>
-                      {record.status.replace('_', ' ')}
+                      {record.status === 'completed' ? 'Completed' : (record.status === 'in_progress' ? 'Pending' : record.status.replace('_', ' '))}
                     </span>
                   </div>
                 </div>
@@ -143,16 +186,80 @@ const History = () => {
                 </div>
                 
                 {/* Action Block */}
-                <div className="shrink-0 flex items-center justify-end">
-                   <div className="bg-slate-50 group-hover:bg-primary-50 text-slate-400 group-hover:text-primary-600 p-3 rounded-full transition">
-                     <ChevronRight size={24} />
-                   </div>
+                <div className="shrink-0 flex flex-col items-end justify-center space-y-2">
+                  {record.status === 'completed' && user.role === 'patient' && (
+                    myTestimonials.find(t => t.service_id === record.id) ? (
+                      <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full flex items-center">
+                        <Star size={12} className="mr-1 fill-emerald-600" /> Reviewed
+                      </span>
+                    ) : (
+                      <button 
+                        onClick={(e) => openFeedback(e, record)}
+                        className="text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 px-3 py-1.5 rounded-lg shadow-sm transition flex items-center"
+                      >
+                        <MessageSquare size={14} className="mr-1" /> Leave Feedback
+                      </button>
+                    )
+                  )}
+                  <div className="bg-slate-50 group-hover:bg-primary-50 text-slate-400 group-hover:text-primary-600 p-2 rounded-full transition self-end mt-auto">
+                    <ChevronRight size={20} />
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Feedback Modal */}
+      {feedbackModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex justify-center items-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md">
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Rate Your Experience</h3>
+            <p className="text-sm text-slate-500 mb-6">How was your consultation with Dr. {feedbackModal.doctorName}?</p>
+            
+            <div className="flex justify-center space-x-2 mb-6">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button 
+                  key={star}
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRating(star); }}
+                  className="focus:outline-none transition-transform hover:scale-110"
+                >
+                  <Star 
+                    size={36} 
+                    className={`${rating >= star ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`} 
+                  />
+                </button>
+              ))}
+            </div>
+
+            <label className="block text-sm font-medium text-slate-700 mb-1">Comment (Optional)</label>
+            <textarea 
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              className="w-full border border-slate-300 rounded-lg p-3 mb-6 min-h-[100px] resize-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              placeholder="Share details of your experience..."
+            ></textarea>
+
+            <div className="flex justify-end space-x-3">
+              <button 
+                onClick={() => setFeedbackModal({ isOpen: false, serviceId: null, type: null, doctorName: '' })}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 font-medium rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={submitFeedback}
+                disabled={isSubmitting || rating === 0}
+                className="px-6 py-2 bg-primary-600 text-white font-bold rounded-lg hover:bg-primary-700 disabled:opacity-50 transition"
+              >
+                {isSubmitting ? 'Submitting...' : 'Submit Feedback'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

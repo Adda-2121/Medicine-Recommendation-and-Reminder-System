@@ -11,7 +11,17 @@ exports.getChatHistory = async (req, res) => {
       order: [['timestamp', 'ASC']]
     });
 
-    res.status(200).json(messages);
+    const userRole = req.user.role; // 'patient' or 'doctor'
+    
+    // Filter out deleted messages
+    const filteredMessages = messages.filter(msg => {
+      if (msg.is_deleted_everyone) return false;
+      if (userRole === 'patient' && msg.deleted_by_patient) return false;
+      if (userRole === 'doctor' && msg.deleted_by_doctor) return false;
+      return true;
+    });
+
+    res.status(200).json(filteredMessages);
   } catch (error) {
     console.error('Get chat history error:', error);
     res.status(500).json({ message: 'Server error fetching chat history' });

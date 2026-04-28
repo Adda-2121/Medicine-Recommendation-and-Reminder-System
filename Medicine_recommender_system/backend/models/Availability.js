@@ -1,6 +1,5 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
-const User = require('./User');
 
 const Availability = sequelize.define('Availability', {
   id: {
@@ -12,7 +11,7 @@ const Availability = sequelize.define('Availability', {
     type: DataTypes.UUID,
     allowNull: false,
     references: {
-      model: User,
+      model: 'Users',
       key: 'id'
     }
   },

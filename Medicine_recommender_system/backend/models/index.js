@@ -21,6 +21,10 @@ if (models.User) {
   if (models.Availability) {
     models.User.hasMany(models.Availability, { as: 'Availabilities', foreignKey: 'doctor_id' });
   }
+  if (models.Testimonial) {
+    models.User.hasMany(models.Testimonial, { as: 'ReceivedTestimonials', foreignKey: 'provider_id' });
+    models.User.hasMany(models.Testimonial, { as: 'SubmittedTestimonials', foreignKey: 'patient_id' });
+  }
 }
 
 if (models.Availability) {
@@ -56,5 +60,64 @@ if (models.Reminder) {
   models.Reminder.belongsTo(models.User, { as: 'Patient', foreignKey: 'patient_id' });
 }
 
+
+
+if (models.ServiceCategory) {
+  models.ServiceCategory.hasMany(models.ServiceItem, { foreignKey: 'category_id' });
+}
+
+if (models.ServiceItem) {
+  models.ServiceItem.belongsTo(models.ServiceCategory, { as: 'Category', foreignKey: 'category_id' });
+}
+
+if (models.ServiceRequest) {
+  models.ServiceRequest.belongsTo(models.Consultation, { foreignKey: 'consultation_id' });
+  models.ServiceRequest.belongsTo(models.User, { as: 'Patient', foreignKey: 'patient_id' });
+  models.ServiceRequest.belongsTo(models.User, { as: 'Doctor', foreignKey: 'doctor_id' });
+  models.ServiceRequest.belongsTo(models.User, { as: 'Specialist', foreignKey: 'specialist_id' });
+  models.ServiceRequest.belongsTo(models.ServiceItem, { as: 'ServiceItem', foreignKey: 'service_item_id' });
+
+  if (models.Consultation) {
+    models.Consultation.hasMany(models.ServiceRequest, { foreignKey: 'consultation_id' });
+  }
+}
+
+
+
+if (models.Notification) {
+  models.User.hasMany(models.Notification, { foreignKey: 'user_id' });
+  models.Notification.belongsTo(models.User, { foreignKey: 'user_id' });
+}
+
+if (models.PushSubscription) {
+  models.User.hasMany(models.PushSubscription, { foreignKey: 'user_id' });
+  models.PushSubscription.belongsTo(models.User, { foreignKey: 'user_id' });
+}
+
+if (models.Testimonial) {
+  models.Testimonial.belongsTo(models.User, { as: 'Patient', foreignKey: 'patient_id' });
+  models.Testimonial.belongsTo(models.User, { as: 'Provider', foreignKey: 'provider_id' });
+  // Since service_id is polymorphic (Consultation or ServiceRequest), we don't strict-link it in Sequelize 
+  // without a polymorphic setup, but we can query it easily.
+}
+
+if (models.Prescription) {
+  models.Prescription.belongsTo(models.Consultation, { foreignKey: 'consultation_id' });
+  models.Prescription.belongsTo(models.Drug, { foreignKey: 'drug_id' });
+  models.Prescription.belongsTo(models.User, { as: 'Patient', foreignKey: 'patient_id' });
+  models.Prescription.belongsTo(models.User, { as: 'Doctor', foreignKey: 'doctor_id' });
+
+  if (models.Consultation) {
+    models.Consultation.hasMany(models.Prescription, { foreignKey: 'consultation_id' });
+  }
+  if (models.Drug) {
+    models.Drug.hasMany(models.Prescription, { foreignKey: 'drug_id' });
+  }
+}
+
 models.sequelize = sequelize;
+models.Setting = require('./Setting');
+models.Testimonial = require('./Testimonial');
+models.Drug = require('./Drug');
+models.Prescription = require('./Prescription');
 module.exports = models;

@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
-import { Users, Activity, FileText, PieChart, ShieldPlus, Calendar, Stethoscope } from 'lucide-react';
+import { Users, Activity, FileText, PieChart, ShieldPlus, Calendar, Stethoscope, Settings } from 'lucide-react';
+import toast from 'react-hot-toast';
+
+import ConfirmationModal from '../components/common/ConfirmationModal';
 
 // Sub-components for tabs
 const OverviewTab = ({ stats }) => (
@@ -88,6 +91,8 @@ const DoctorsTab = () => {
   });
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  const [modalConfig, setModalConfig] = useState({ isOpen: false, doctorId: null });
 
   const fetchDoctors = async () => {
     try {
@@ -124,9 +129,16 @@ const DoctorsTab = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to remove this doctor?')) {
-      alert('Mock Delete: Doctor ' + id + ' removed.');
+  const confirmDelete = (id) => {
+    setModalConfig({ isOpen: true, doctorId: id });
+  };
+
+  const executeDelete = async () => {
+    try {
+      await api.delete(`/users/${modalConfig.doctorId}`);
+      fetchDoctors();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to remove doctor. Ensure they have no dependent records.');
     }
   };
 
@@ -138,7 +150,7 @@ const DoctorsTab = () => {
         setSelectedDoctor({ ...selectedDoctor, is_verified: !currentStatus });
       }
     } catch (err) {
-      alert('Failed to update verification status');
+      toast.error('Failed to update verification status');
     }
   };
 
@@ -286,7 +298,7 @@ const DoctorsTab = () => {
                     >
                       Review Details
                     </button>
-                    <button className="text-red-500 hover:text-red-700 font-medium" onClick={() => handleDelete(doctor.id)}>Remove</button>
+                    <button className="text-red-500 hover:text-red-700 font-medium" onClick={() => confirmDelete(doctor.id)}>Remove</button>
                   </td>
                 </tr>
               ))}
@@ -393,6 +405,16 @@ const DoctorsTab = () => {
           </div>
         </div>
       )}
+
+      <ConfirmationModal
+        isOpen={modalConfig.isOpen}
+        onClose={() => setModalConfig({ isOpen: false, doctorId: null })}
+        onConfirm={executeDelete}
+        title="Remove Doctor"
+        message="Are you sure you want to remove this doctor from the system? This action cannot be undone."
+        confirmText="Remove"
+        isDanger={true}
+      />
     </div>
   );
 };
@@ -617,99 +639,300 @@ const MonitoringTab = () => {
   );
 };
 
-const PaymentsTab = () => {
-  const [payments, setPayments] = useState([]);
+const SettingsTab = () => {
+  const [fee, setFee] = useState('');
   const [loading, setLoading] = useState(true);
-  const [verifyingId, setVerifyingId] = useState(null);
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [adminNotes, setAdminNotes] = useState('');
-  const [selectedPayment, setSelectedPayment] = useState(null);
+  const [saving, setSaving] = useState(false);
 
-  const fetchPayments = async () => {
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await api.get('/settings');
+        const feeSetting = res.data.find(s => s.key === 'consultation_fee');
+        if (feeSetting) {
+          setFee(feeSetting.value);
+        }
+      } catch (err) {
+        console.error('Failed to fetch settings', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
     try {
-      const res = await api.get('/payments');
-      setPayments(res.data);
+      await api.put('/settings/consultation_fee', { value: fee });
+      toast.success('Consultation fee updated successfully');
     } catch (err) {
-      console.error('Failed to fetch payments', err);
+      toast.error('Failed to update consultation fee');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative max-w-2xl">
+      <div className="mb-6">
+        <h3 className="font-semibold text-xl text-slate-800">Platform Settings</h3>
+        <p className="text-slate-500 text-sm mt-1">Configure global application settings and pricing.</p>
+      </div>
+
+      {loading ? (
+        <div className="animate-pulse h-10 bg-slate-200 rounded w-full"></div>
+      ) : (
+        <form onSubmit={handleSave} className="space-y-6">
+          <div className="bg-slate-50 p-5 rounded-lg border border-slate-200">
+            <h4 className="font-semibold text-slate-700 mb-4 border-b border-slate-200 pb-2">Consultation Pricing</h4>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Default Consultation Fee (ETB)
+              </label>
+              <p className="text-xs text-slate-500 mb-3">This is the amount patients will pay via Chapa to unlock a 1-week consultation subscription.</p>
+              <div className="flex items-center space-x-3">
+                <input
+                  type="number"
+                  min="0"
+                  required
+                  className="w-48 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white text-lg font-bold text-slate-800"
+                  value={fee}
+                  onChange={(e) => setFee(e.target.value)}
+                />
+                <span className="text-slate-500 font-medium">Birr</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={saving}
+              className="bg-primary-600 text-white px-6 py-2.5 rounded-md hover:bg-primary-700 transition font-bold shadow-sm disabled:opacity-70"
+            >
+              {saving ? 'Saving...' : 'Save Settings'}
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+};
+
+const SpecialistsTab = () => {
+  const [specialists, setSpecialists] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState({ name: '', email: '', password: '', work_location: '', specializations: [], role: 'laboratorist' });
+  const [formLoading, setFormLoading] = useState(false);
+  const [error, setError] = useState('');
+  
+  const [modalConfig, setModalConfig] = useState({ isOpen: false, specialistId: null });
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [labsRes, radsRes, catRes] = await Promise.all([
+        api.get('/users?role=laboratorist'),
+        api.get('/users?role=radiologist'),
+        api.get('/services/categories')
+      ]);
+      setSpecialists([...labsRes.data, ...radsRes.data]);
+      setCategories(catRes.data);
+    } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchPayments();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  const handleVerify = async (paymentId, status) => {
-    if (status === 'failed' && !adminNotes.trim()) {
-      alert('You must provide a reason for rejecting the payment in the notes.');
+  const handleCategoryChange = (catName) => {
+    setFormData(prev => {
+      const isSelected = prev.specializations.includes(catName);
+      return {
+        ...prev,
+        specializations: isSelected 
+          ? prev.specializations.filter(c => c !== catName)
+          : [...prev.specializations, catName]
+      };
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    
+    if (formData.specializations.length === 0) {
+      setError('Please select at least one specialization category.');
       return;
     }
 
+    setFormLoading(true);
     try {
-      setVerifyingId(paymentId);
-      await api.put(`/payments/${paymentId}/verify`, { status, admin_notes: adminNotes || null });
-      alert(`Payment ${status === 'verified' ? 'verified' : 'rejected'} successfully.`);
-      fetchPayments();
-      setSelectedPayment(null);
-      setAdminNotes('');
+      await api.post('/users', { ...formData, is_verified: true });
+      setFormData({ name: '', email: '', password: '', work_location: '', specializations: [], role: 'laboratorist' });
+      setShowForm(false);
+      fetchData();
     } catch (err) {
-      console.error(err);
-      alert('Failed to update payment status.');
+      setError(err.response?.data?.message || 'Failed to register specialist');
     } finally {
-      setVerifyingId(null);
+      setFormLoading(false);
+    }
+  };
+
+  const confirmDelete = (id) => {
+    setModalConfig({ isOpen: true, specialistId: id });
+  };
+
+  const executeDelete = async () => {
+    try {
+      await api.delete(`/users/${modalConfig.specialistId}`);
+      fetchData();
+      setModalConfig({ isOpen: false, specialistId: null });
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to remove specialist. Ensure they have no dependent records.');
     }
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative">
-      <div className="mb-6">
-        <h3 className="font-semibold text-xl text-slate-800">Payment Verification</h3>
-        <p className="text-slate-500 text-sm mt-1">Review and approve patient payment submissions.</p>
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h3 className="font-semibold text-xl text-slate-800">Specialist Management</h3>
+          <p className="text-slate-500 text-sm mt-1">Register new laboratory technicians and radiologists.</p>
+        </div>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 transition font-medium text-sm flex items-center shadow-sm"
+        >
+          {showForm ? 'Cancel' : '+ Register Specialist'}
+        </button>
       </div>
+
+      {showForm && (
+        <div className="bg-slate-50 p-6 rounded-lg border border-slate-200 mb-8 max-w-3xl">
+          <h4 className="font-bold text-slate-800 mb-4 border-b border-slate-200 pb-2">Specialist Registration</h4>
+          {error && <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm mb-4 border border-red-200">{error}</div>}
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+                <input
+                  type="text" required placeholder="John Doe"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
+                <select
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                >
+                  <option value="laboratorist">Laboratorist</option>
+                  <option value="radiologist">Radiologist</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
+                <input
+                  type="email" required placeholder="john.doe@hospital.com"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Assigned Work Location / Room</label>
+                <input
+                  type="text" required placeholder="e.g. Room 101, Radiology Unit"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  value={formData.work_location} onChange={(e) => setFormData({ ...formData, work_location: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Temporary Password</label>
+                <input
+                  type="password" required minLength={6}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                />
+              </div>
+            </div>
+            
+            <div className="pt-2 border-t border-slate-200 mt-4">
+              <label className="block text-sm font-bold text-slate-700 mb-2">Capabilities / Specializations</label>
+              <div className="flex flex-wrap gap-2">
+                {categories.filter(c => c.department_type === (formData.role === 'laboratorist' ? 'laboratory' : 'radiology')).map(cat => (
+                  <label key={cat.id} className={`cursor-pointer px-4 py-2 rounded-full border text-sm font-semibold transition ${formData.specializations.includes(cat.name) ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}>
+                    <input 
+                      type="checkbox" 
+                      className="hidden" 
+                      onChange={() => handleCategoryChange(cat.name)}
+                      checked={formData.specializations.includes(cat.name)}
+                    />
+                    {cat.name}
+                  </label>
+                ))}
+                {categories.length === 0 && <span className="text-slate-500 text-sm">Please configure service categories first.</span>}
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end mt-4">
+              <button
+                type="submit" disabled={formLoading}
+                className="bg-primary-600 text-white px-6 py-2.5 rounded-md hover:bg-primary-700 transition font-bold shadow-sm disabled:opacity-70"
+              >
+                {formLoading ? 'Registering...' : 'Complete Registration'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {loading ? (
         <div className="animate-pulse space-y-4">
-          <div className="h-4 bg-slate-200 rounded w-1/4"></div>
-          <div className="h-10 bg-slate-200 rounded w-full"></div>
+          <div className="h-10 bg-slate-200 rounded w-full mb-2"></div>
+          <div className="h-16 bg-slate-100 rounded w-full"></div>
         </div>
-      ) : payments.length > 0 ? (
-        <div className="overflow-x-auto text-sm">
+      ) : specialists.length > 0 ? (
+        <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-slate-500 uppercase">Ref Code</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-500 uppercase">Patient & Appt</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-500 uppercase">Amount</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-500 uppercase">Status</th>
-                <th className="px-4 py-3 text-right font-medium text-slate-500 uppercase">Action</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Specialist Details</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Role & Capabilities</th>
+                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
-              {payments.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-4 font-mono font-bold text-slate-700">{p.reference_code}</td>
-                  <td className="px-4 py-4">
-                    <div className="font-medium text-slate-900">{p.Patient?.name}</div>
-                    <div className="text-xs text-slate-500 truncate max-w-[150px]">{p.Consultation?.reason}</div>
+              {specialists.map((spec) => (
+                <tr key={spec.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center font-bold overflow-hidden border border-slate-200 bg-primary-100 text-primary-700">
+                        {spec.profile_picture ? (
+                          <img src={`${api.defaults.baseURL?.replace(/\/api$/, '') || 'http://localhost:5000'}${spec.profile_picture}`} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          spec.name.charAt(0)
+                        )}
+                      </div>
+                      <div className="ml-4">
+                        <div className="text-sm font-bold text-slate-900">{spec.name}</div>
+                        <div className="text-sm text-slate-500">{spec.email}</div>
+                      </div>
+                    </div>
                   </td>
-                  <td className="px-4 py-4 text-emerald-600 font-bold">800 Birr</td>
-                  <td className="px-4 py-4">
-                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
-                        ${p.status === 'verified' ? 'bg-emerald-100 text-emerald-800' :
-                        p.status === 'failed' ? 'bg-red-100 text-red-800' :
-                          p.status === 'expired' ? 'bg-slate-200 text-slate-800' :
-                            'bg-amber-100 text-amber-800'}`}>
-                      {p.status.toUpperCase()}
-                    </span>
+                  <td className="px-6 py-4">
+                    <div className="text-sm font-bold text-slate-700 uppercase">{spec.role}</div>
+                    <div className="text-xs text-slate-500 max-w-xs truncate" title={spec.specializations?.join(', ')}>{spec.specializations?.join(', ') || 'None'}</div>
                   </td>
-                  <td className="px-4 py-4 text-right">
-                    <button
-                      onClick={() => setSelectedPayment(p)}
-                      className="text-primary-600 hover:text-primary-800 font-bold px-3 py-1 bg-primary-50 hover:bg-primary-100 rounded-md transition"
-                    >
-                      Review
-                    </button>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button className="text-red-500 hover:text-red-700 font-medium" onClick={() => confirmDelete(spec.id)}>Remove</button>
                   </td>
                 </tr>
               ))}
@@ -717,82 +940,252 @@ const PaymentsTab = () => {
           </table>
         </div>
       ) : (
-        <div className="text-center p-8 bg-slate-50 rounded-lg border border-dashed border-slate-300">
-          <p className="text-slate-500 font-medium">No payments found.</p>
-        </div>
-      )}
-
-      {/* Payment Review Modal */}
-      {selectedPayment && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col">
-            <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-              <h3 className="font-bold text-lg text-slate-800">Review Payment: {selectedPayment.reference_code}</h3>
-              <button onClick={() => { setSelectedPayment(null); setAdminNotes(''); }} className="text-slate-500 hover:text-slate-800 font-bold text-xl">&times;</button>
-            </div>
-            <div className="p-6 overflow-y-auto max-h-[70vh]">
-              <div className="grid grid-cols-2 gap-4 mb-4 text-sm bg-slate-50 p-4 rounded-lg border border-slate-100">
-                <div><span className="text-slate-500 block mb-1">Patient Name</span><span className="font-bold">{selectedPayment.Patient?.name}</span></div>
-                <div><span className="text-slate-500 block mb-1">Amount Claimed</span><span className="font-bold text-emerald-600">800 Birr</span></div>
-                <div><span className="text-slate-500 block mb-1">Date Submitted</span><span>{new Date(selectedPayment.created_at).toLocaleString()}</span></div>
-                <div><span className="text-slate-500 block mb-1">Consultation ID</span><span className="font-mono text-xs">{selectedPayment.consultation_id}</span></div>
-                {selectedPayment.expires_at && (
-                  <div className="col-span-2"><span className="text-slate-500 block mb-1">Access Expiration</span><span className="font-bold text-amber-600">{new Date(selectedPayment.expires_at).toLocaleString()}</span></div>
-                )}
-              </div>
-
-              <div className="mb-4">
-                <h4 className="font-semibold text-slate-700 mb-2">Screenshot Proof:</h4>
-                <div className="border border-slate-200 rounded-lg bg-slate-100 h-96 flex items-center justify-center overflow-hidden relative group">
-                  {selectedPayment.screenshot_url ? (
-                    <a href={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}${selectedPayment.screenshot_url}`} target="_blank" rel="noreferrer" className="w-full h-full flex items-center justify-center relative">
-                      <img
-                        src={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}${selectedPayment.screenshot_url}`}
-                        alt="Payment Proof"
-                        className="max-h-full max-w-full object-contain cursor-zoom-in transition-transform duration-300 group-hover:scale-105"
-                      />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition flex items-center justify-center">
-                        <span className="opacity-0 group-hover:opacity-100 bg-white/80 text-slate-800 font-bold px-3 py-1.5 rounded-full shadow-lg text-sm backdrop-blur-sm transform translate-y-4 group-hover:translate-y-0 transition">Click to Zoom Full Screen</span>
-                      </div>
-                    </a>
-                  ) : (
-                    <span className="text-slate-400">No Image Uploaded</span>
-                  )}
-                </div>
-              </div>
-
-              {selectedPayment.status === 'pending' && (
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Admin Notes (Required if Rejecting)</label>
-                  <textarea
-                    className="w-full border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                    rows="2"
-                    placeholder="e.g., Screenshot is blurry, or incorrect amount paid."
-                    value={adminNotes}
-                    onChange={(e) => setAdminNotes(e.target.value)}
-                  ></textarea>
-                </div>
-              )}
-            </div>
-
-            {selectedPayment.status === 'pending' ? (
-              <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end space-x-3">
-                <button onClick={() => handleVerify(selectedPayment.id, 'failed')} disabled={verifyingId === selectedPayment.id} className="px-5 py-2 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-lg font-bold transition disabled:opacity-50">Reject</button>
-                <button onClick={() => handleVerify(selectedPayment.id, 'verified')} disabled={verifyingId === selectedPayment.id} className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold transition disabled:opacity-50 shadow-sm">Verify Payment</button>
-              </div>
-            ) : selectedPayment.status === 'verified' ? (
-              <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
-                <span className="text-emerald-600 font-bold text-sm">Payment Verified</span>
-                <button onClick={() => { if (window.confirm('Are you sure you want to revoke this patient\'s access early?')) handleVerify(selectedPayment.id, 'expired'); }} disabled={verifyingId === selectedPayment.id} className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold transition disabled:opacity-50 shadow-sm">Revoke Access Now</button>
-              </div>
-            ) : (
-              <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end">
-                <span className="text-slate-500 italic text-sm">This payment is already {selectedPayment.status}.</span>
-              </div>
-            )}
+        <div className="text-center p-12 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+          <div className="bg-white p-4 rounded-full inline-block mb-4 shadow-sm border border-slate-100">
+            <Activity className="text-primary-400" size={32} />
           </div>
+          <p className="text-xl text-slate-700 font-bold mb-1">No specialists registered yet</p>
+          <p className="text-slate-500 max-w-sm mx-auto">Register lab technicians and radiologists here.</p>
         </div>
       )}
+
+      <ConfirmationModal
+        isOpen={modalConfig.isOpen}
+        onClose={() => setModalConfig({ isOpen: false, specialistId: null })}
+        onConfirm={executeDelete}
+        title="Remove Specialist"
+        message="Are you sure you want to remove this specialist from the system? This action cannot be undone."
+        confirmText="Remove"
+        isDanger={true}
+      />
+    </div>
+  );
+};
+
+const ServicesTab = () => {
+  const [categories, setCategories] = useState([]);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Form states
+  const [showCatForm, setShowCatForm] = useState(false);
+  const [catForm, setCatForm] = useState({ id: null, name: '', department_type: 'laboratory', isEditing: false });
+  
+  const [showItemForm, setShowItemForm] = useState(false);
+  const [itemForm, setItemForm] = useState({ id: null, name: '', category_id: '', price: 0, is_active: true, isEditing: false });
+
+  const [modalConfig, setModalConfig] = useState({ isOpen: false, type: null, id: null });
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [catRes, itemRes] = await Promise.all([
+        api.get('/services/categories'),
+        api.get('/services/items')
+      ]);
+      setCategories(catRes.data);
+      setItems(itemRes.data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  const handleCatSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (catForm.isEditing) {
+        await api.put(`/services/categories/${catForm.id}`, catForm);
+        toast.success('Category updated successfully');
+      } else {
+        await api.post('/services/categories', catForm);
+        toast.success('Category created successfully');
+      }
+      setCatForm({ id: null, name: '', department_type: 'laboratory', isEditing: false });
+      setShowCatForm(false);
+      fetchData();
+    } catch (err) { toast.error('Failed to save category'); }
+  };
+
+  const handleItemSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (itemForm.isEditing) {
+        await api.put(`/services/items/${itemForm.id}`, itemForm);
+        toast.success('Service item updated successfully');
+      } else {
+        await api.post('/services/items', itemForm);
+        toast.success('Service item created successfully');
+      }
+      setItemForm({ id: null, name: '', category_id: '', price: 0, is_active: true, isEditing: false });
+      setShowItemForm(false);
+      fetchData();
+    } catch (err) { toast.error('Failed to save service item'); }
+  };
+
+  const confirmDelete = (type, id) => {
+    setModalConfig({ isOpen: true, type, id });
+  };
+
+  const executeDelete = async () => {
+    try {
+      if (modalConfig.type === 'item') {
+        await api.delete(`/services/items/${modalConfig.id}`);
+      } else if (modalConfig.type === 'category') {
+        await api.delete(`/services/categories/${modalConfig.id}`);
+      }
+      fetchData();
+      setModalConfig({ isOpen: false, type: null, id: null });
+    } catch (err) {
+      if (modalConfig.type === 'item') {
+        toast.error(err.response?.data?.message || 'Failed to delete service item. It may be linked to existing service requests.'); 
+      } else {
+        toast.error(err.response?.data?.message || 'Failed to delete category. Make sure no service items are linked to it.'); 
+      }
+    }
+  };
+
+  const handleEditCategory = (cat) => {
+    setCatForm({ id: cat.id, name: cat.name, department_type: cat.department_type, isEditing: true });
+    setShowCatForm(true);
+  };
+
+  const handleEditItem = (item) => {
+    setItemForm({ id: item.id, name: item.name, category_id: item.category_id, price: item.price, is_active: item.is_active, isEditing: true });
+    setShowItemForm(true);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h3 className="font-semibold text-xl text-slate-800">Service Categories</h3>
+            <p className="text-slate-500 text-sm mt-1">Manage Lab and Radiology categories.</p>
+          </div>
+          <button onClick={() => {
+            setCatForm({ id: null, name: '', department_type: 'laboratory', isEditing: false });
+            setShowCatForm(!showCatForm);
+          }} className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 transition text-sm">
+            {showCatForm && !catForm.isEditing ? 'Cancel' : '+ Add Category'}
+          </button>
+        </div>
+        
+        {showCatForm && (
+          <form onSubmit={handleCatSubmit} className="mb-6 bg-slate-50 p-4 rounded-lg flex space-x-4 items-end">
+            <div className="flex-1">
+              <label className="block text-sm font-medium mb-1">Category Name</label>
+              <input type="text" required value={catForm.name} onChange={e => setCatForm({...catForm, name: e.target.value})} className="w-full px-3 py-2 border rounded focus:ring-primary-500 outline-none" />
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-medium mb-1">Department</label>
+              <select value={catForm.department_type} onChange={e => setCatForm({...catForm, department_type: e.target.value})} className="w-full px-3 py-2 border rounded outline-none">
+                <option value="laboratory">Laboratory</option>
+                <option value="radiology">Radiology</option>
+              </select>
+            </div>
+            <button type="submit" className="bg-emerald-600 text-white px-6 py-2 rounded hover:bg-emerald-700 transition">
+              {catForm.isEditing ? 'Update' : 'Save'}
+            </button>
+          </form>
+        )}
+
+        <div className="grid grid-cols-2 gap-4">
+          {categories.map(c => (
+            <div key={c.id} className="p-3 border rounded-lg flex justify-between items-center bg-white shadow-sm hover:border-primary-300 transition">
+              <div>
+                <span className="font-bold block text-slate-800">{c.name}</span>
+                <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full uppercase mt-1 inline-block">{c.department_type}</span>
+              </div>
+              <div className="space-x-2">
+                <button onClick={() => handleEditCategory(c)} className="text-primary-600 hover:text-primary-800 text-sm font-semibold bg-primary-50 px-3 py-1 rounded">Edit</button>
+                <button onClick={() => confirmDelete('category', c.id)} className="text-red-600 hover:text-red-800 text-sm font-semibold bg-red-50 px-3 py-1 rounded">Delete</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h3 className="font-semibold text-xl text-slate-800">Service Items & Pricing</h3>
+            <p className="text-slate-500 text-sm mt-1">Manage individual tests/services and their costs.</p>
+          </div>
+          <button onClick={() => {
+            setItemForm({ id: null, name: '', category_id: '', price: 0, is_active: true, isEditing: false });
+            setShowItemForm(!showItemForm);
+          }} className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 transition text-sm">
+            {showItemForm && !itemForm.isEditing ? 'Cancel' : '+ Add Service Item'}
+          </button>
+        </div>
+
+        {showItemForm && (
+          <form onSubmit={handleItemSubmit} className="mb-6 bg-slate-50 p-4 rounded-lg flex flex-wrap gap-4 items-end">
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-sm font-medium mb-1">Service Name</label>
+              <input type="text" required value={itemForm.name} onChange={e => setItemForm({...itemForm, name: e.target.value})} className="w-full px-3 py-2 border rounded focus:ring-primary-500 outline-none" placeholder="e.g. Chest X-Ray" />
+            </div>
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-sm font-medium mb-1">Category</label>
+              <select required value={itemForm.category_id} onChange={e => setItemForm({...itemForm, category_id: e.target.value})} className="w-full px-3 py-2 border rounded outline-none">
+                <option value="">Select Category</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name} ({c.department_type})</option>)}
+              </select>
+            </div>
+            <div className="w-32">
+              <label className="block text-sm font-medium mb-1">Price (Birr)</label>
+              <input type="number" required min="0" value={itemForm.price} onChange={e => setItemForm({...itemForm, price: e.target.value})} className="w-full px-3 py-2 border rounded outline-none" />
+            </div>
+            <button type="submit" className="bg-emerald-600 text-white px-6 py-2 rounded hover:bg-emerald-700 transition mb-0.5">
+              {itemForm.isEditing ? 'Update' : 'Save'}
+            </button>
+          </form>
+        )}
+
+        {loading ? <div className="animate-pulse h-10 bg-slate-100 rounded"></div> : (
+          <table className="min-w-full divide-y divide-slate-200">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Service Name</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Category</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Price</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Action</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-slate-200">
+              {items.map(item => (
+                <tr key={item.id}>
+                  <td className="px-4 py-3 font-medium">{item.name}</td>
+                  <td className="px-4 py-3 text-sm text-slate-500">{item.Category?.name}</td>
+                  <td className="px-4 py-3 text-emerald-600 font-bold">{item.price} Birr</td>
+                  <td className="px-4 py-3 text-right text-sm space-x-3">
+                    <button className="text-primary-600 hover:text-primary-800 font-medium" onClick={() => handleEditItem(item)}>Edit</button>
+                    <button className="text-red-500 hover:text-red-700 font-medium" onClick={() => confirmDelete('item', item.id)}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <ConfirmationModal
+        isOpen={modalConfig.isOpen}
+        onClose={() => setModalConfig({ isOpen: false, type: null, id: null })}
+        onConfirm={executeDelete}
+        title={modalConfig.type === 'category' ? "Delete Category" : "Delete Service Item"}
+        message={
+          modalConfig.type === 'category' 
+            ? "Are you sure you want to delete this category? All service items under it must be deleted first." 
+            : "Are you sure you want to delete this service item? This action cannot be undone."
+        }
+        confirmText="Delete"
+        isDanger={true}
+      />
     </div>
   );
 };
@@ -824,8 +1217,10 @@ const AdminDashboard = () => {
       case 'overview': return <OverviewTab stats={stats} />;
       case 'doctors': return <DoctorsTab />;
       case 'patients': return <PatientsTab />;
+      case 'specialists': return <SpecialistsTab />;
+      case 'services': return <ServicesTab />;
       case 'monitoring': return <MonitoringTab />;
-      case 'payments': return <PaymentsTab />;
+      case 'settings': return <SettingsTab />;
       default: return <OverviewTab stats={stats} />;
     }
   };
@@ -842,8 +1237,10 @@ const AdminDashboard = () => {
           { id: 'overview', label: 'Overview', icon: PieChart },
           { id: 'doctors', label: 'Doctors', icon: Stethoscope },
           { id: 'patients', label: 'Patients', icon: Users },
+          { id: 'specialists', label: 'Specialists', icon: Activity },
+          { id: 'services', label: 'Services Config', icon: FileText },
           { id: 'monitoring', label: 'Monitoring', icon: Activity },
-          { id: 'payments', label: 'Payments', icon: FileText }
+          { id: 'settings', label: 'Settings', icon: Settings }
         ].map(tab => (
           <button
             key={tab.id}

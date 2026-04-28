@@ -1,4 +1,5 @@
-const { User } = require('../models');
+const { User, Availability, Testimonial } = require('../models');
+const { Op } = require('sequelize');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
@@ -43,13 +44,49 @@ exports.getVerifiedDoctors = async (req, res) => {
       whereClause.specialty = specialty;
     }
 
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
     const doctors = await User.findAll({
       where: whereClause,
       attributes: ['id', 'name', 'specialty', 'experience_years', 'is_verified'],
+      include: [
+        {
+          model: Availability,
+          as: 'Availabilities',
+          where: {
+            is_booked: false,
+            date: {
+              [Op.gte]: today
+            }
+          },
+          required: false, // Use left join so we get all doctors even without availabilities
+          attributes: ['id'] // just need to check if exists/count
+        },
+        {
+          model: Testimonial,
+          as: 'ReceivedTestimonials',
+          attributes: ['rating'],
+          required: false
+        }
+      ],
       order: [['name', 'ASC']]
     });
 
-    res.status(200).json(doctors);
+    const doctorsWithRatings = doctors.map(doc => {
+      const docJSON = doc.toJSON();
+      const testimonials = docJSON.ReceivedTestimonials || [];
+      const totalReviews = testimonials.length;
+      const sum = testimonials.reduce((acc, curr) => acc + curr.rating, 0);
+      const averageRating = totalReviews > 0 ? (sum / totalReviews).toFixed(1) : 0;
+      
+      delete docJSON.ReceivedTestimonials; // keep payload small
+      docJSON.averageRating = Number(averageRating);
+      docJSON.totalReviews = totalReviews;
+      return docJSON;
+    });
+
+    res.status(200).json(doctorsWithRatings);
   } catch (error) {
     console.error('Get doctors error:', error);
     res.status(500).json({ message: 'Server error fetching doctors' });
@@ -61,7 +98,7 @@ exports.getVerifiedDoctors = async (req, res) => {
 // @access  Private (Admin)
 exports.createUser = async (req, res) => {
   try {
-    const { name, email, password, role, specialty, license_number, experience_years } = req.body;
+    const { name, email, password, role, specialty, license_number, experience_years, lab_categories, work_location } = req.body;
 
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
@@ -70,6 +107,13 @@ exports.createUser = async (req, res) => {
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
+
+    if (work_location) {
+      const existingRoom = await User.findOne({ where: { work_location } });
+      if (existingRoom) {
+        return res.status(400).json({ message: `Work location/Room '${work_location}' is already assigned to another specialist.` });
+      }
+    }
 
     const userPayload = {
       name,
@@ -83,6 +127,11 @@ exports.createUser = async (req, res) => {
       userPayload.license_number = license_number;
       userPayload.experience_years = experience_years;
       userPayload.is_verified = false; // Requires explicit admin verification later
+    }
+
+    if (role === 'laboratorist' || role === 'radiologist') {
+      userPayload.specializations = req.body.specializations || [];
+      userPayload.work_location = work_location;
     }
 
     const user = await User.create(userPayload);
@@ -204,10 +253,86 @@ exports.updateProfile = async (req, res) => {
         email: user.email,
         role: user.role,
         profile_picture: user.profile_picture,
+        specializations: user.specializations,
+        work_location: user.work_location,
       }
     });
   } catch (error) {
     console.error('Update profile error:', error);
     res.status(500).json({ message: 'Server error updating profile' });
+  }
+};
+
+// @desc    Delete a user
+// @route   DELETE /api/users/:id
+// @access  Private (Admin)
+exports.deleteUser = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (user.id === req.user.id) {
+      return res.status(400).json({ message: 'Cannot delete your own account' });
+    }
+
+    await user.destroy();
+    res.status(200).json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ message: 'Server error deleting user. Make sure no records depend on this user.' });
+  }
+};
+
+// @desc    Toggle doctor availability status
+// @route   PUT /api/users/availability
+// @access  Private (Doctor)
+exports.toggleAvailability = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id);
+    if (!user || user.role !== 'doctor') {
+      return res.status(403).json({ message: 'Only doctors can toggle availability' });
+    }
+
+    const { status } = req.body; // 'available', 'busy', 'offline'
+    if (!['available', 'busy', 'offline'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
+    }
+
+    user.availability_status = status;
+    await user.save();
+
+    // If they became available, trigger auto-assignment
+    if (status === 'available') {
+      const consultationController = require('./consultationController');
+      // trigger auto assignment
+      if (consultationController.triggerAutoAssignment) {
+        consultationController.triggerAutoAssignment();
+      }
+    }
+
+    res.status(200).json({
+      message: `Status updated to ${status}`,
+      availability_status: user.availability_status
+    });
+  } catch (error) {
+    console.error('Toggle availability error:', error);
+    res.status(500).json({ message: 'Server error updating availability' });
+  }
+};
+
+// @desc    Get doctor availability status
+// @route   GET /api/users/availability
+// @access  Private (Doctor)
+exports.getAvailabilityStatus = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id, { attributes: ['availability_status'] });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    
+    res.status(200).json({ availability_status: user.availability_status });
+  } catch (error) {
+    console.error('Get availability error:', error);
+    res.status(500).json({ message: 'Server error fetching availability' });
   }
 };

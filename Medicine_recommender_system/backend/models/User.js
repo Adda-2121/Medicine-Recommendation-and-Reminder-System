@@ -21,8 +21,16 @@ const User = sequelize.define('User', {
     allowNull: false,
   },
   role: {
-    type: DataTypes.ENUM('company_admin', 'doctor', 'patient'),
+    type: DataTypes.ENUM('company_admin', 'doctor', 'patient', 'laboratorist', 'radiologist'),
     defaultValue: 'patient',
+  },
+  specializations: {
+    type: DataTypes.ARRAY(DataTypes.STRING),
+    allowNull: true,
+  },
+  work_location: {
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   age: {
     type: DataTypes.INTEGER,
@@ -35,6 +43,10 @@ const User = sequelize.define('User', {
   is_verified: {
     type: DataTypes.BOOLEAN,
     defaultValue: false, // Default to false, even for patients, but we only really care about this for doctors
+  },
+  availability_status: {
+    type: DataTypes.ENUM('available', 'busy', 'offline'),
+    defaultValue: 'offline',
   },
   specialty: {
     type: DataTypes.STRING,

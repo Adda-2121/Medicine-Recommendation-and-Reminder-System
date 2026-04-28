@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import { Search, User, Clock, Calendar, CheckCircle, Activity, ChevronRight } from 'lucide-react';
+import { Search, User, Clock, Calendar, CheckCircle, Activity, ChevronRight, Star, MessageSquare } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import toast from 'react-hot-toast';
 
 const FindDoctor = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -15,8 +18,11 @@ const FindDoctor = () => {
   const [availabilities, setAvailabilities] = useState([]);
   const [fetchingSlots, setFetchingSlots] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState(null);
-  const [bookingForm, setBookingForm] = useState({ reason: '', symptoms_description: '' });
+  const [bookingForm, setBookingForm] = useState({ reason: '', symptoms_description: '', commonReason: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Reviews Modal State
+  const [reviewsModal, setReviewsModal] = useState({ isOpen: false, doctor: null, reviews: [], loading: false });
 
   useEffect(() => {
     fetchDoctors();
@@ -39,7 +45,7 @@ const FindDoctor = () => {
   const handleSelectDoctor = async (doctor) => {
     setSelectedDoctor(doctor);
     setSelectedSlot(null);
-    setBookingForm({ reason: '', symptoms_description: '' });
+    setBookingForm({ reason: '', symptoms_description: '', commonReason: '' });
     
     try {
       setFetchingSlots(true);
@@ -69,14 +75,26 @@ const FindDoctor = () => {
       };
 
       await api.post('/consultations', payload);
-      alert('Consultation requested. Please complete payment to confirm.');
+      toast.success('Consultation requested. Please complete payment to confirm.');
       setSelectedDoctor(null);
       navigate('/consultations');
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || 'Failed to book appointment.');
+      toast.error(err.response?.data?.message || 'Failed to book appointment.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleViewReviews = async (e, doctor) => {
+    e.stopPropagation();
+    setReviewsModal({ isOpen: true, doctor, reviews: [], loading: true });
+    try {
+      const res = await api.get(`/testimonials/provider/${doctor.id}`);
+      setReviewsModal({ isOpen: true, doctor, reviews: res.data.testimonials || [], loading: false });
+    } catch (err) {
+      console.error(err);
+      setReviewsModal(prev => ({ ...prev, loading: false }));
     }
   };
 
@@ -91,8 +109,8 @@ const FindDoctor = () => {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Find a Doctor</h2>
-          <p className="text-slate-500 mt-1">Browse our verified professionals and book a consultation.</p>
+          <h2 className="text-2xl font-bold text-slate-800 tracking-tight">{t('findDoctor.title')}</h2>
+          <p className="text-slate-500 mt-1">{t('findDoctor.subtitle')}</p>
         </div>
       </div>
 
@@ -101,7 +119,7 @@ const FindDoctor = () => {
         <div className="relative flex-1">
           <input 
             type="text" 
-            placeholder="Search by name or specialty..." 
+            placeholder={t('findDoctor.searchPlaceholder')} 
             className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -113,7 +131,7 @@ const FindDoctor = () => {
           value={selectedSpecialty}
           onChange={(e) => setSelectedSpecialty(e.target.value)}
         >
-          <option value="">All Specialties</option>
+          <option value="">{t('findDoctor.allSpecialties')}</option>
           {specialties.map(s => (
             <option key={s} value={s}>{s}</option>
           ))}
@@ -128,8 +146,8 @@ const FindDoctor = () => {
       ) : filteredDoctors.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center text-slate-500">
           <Activity size={48} className="mx-auto text-slate-300 mb-4" />
-          <h3 className="text-xl font-medium text-slate-700">No doctors found</h3>
-          <p>Try adjusting your search criteria.</p>
+          <h3 className="text-xl font-medium text-slate-700">{t('findDoctor.noDoctors')}</h3>
+          <p>{t('findDoctor.adjustSearch')}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -142,18 +160,45 @@ const FindDoctor = () => {
                   </div>
                   <div>
                     <h3 className="text-lg font-bold text-slate-800">Dr. {doctor.name}</h3>
-                    <p className="text-sm font-medium text-primary-600">{doctor.specialty || 'General Practitioner'}</p>
-                    <div className="flex items-center text-xs text-slate-500 mt-1">
-                      <Clock size={12} className="mr-1" /> {doctor.experience_years ? `${doctor.experience_years} Years Exp.` : 'New Professional'}
+                    <p className="text-sm font-medium text-primary-600">{doctor.specialty || t('findDoctor.generalPractitioner')}</p>
+                    <div className="flex items-center space-x-3 mt-1">
+                      <div className="flex items-center text-xs text-slate-500">
+                        <Clock size={12} className="mr-1" /> {doctor.experience_years ? `${doctor.experience_years} ${t('findDoctor.yearsExp')}` : t('findDoctor.newProfessional')}
+                      </div>
+                      <div 
+                        className="flex items-center text-xs cursor-pointer hover:underline text-slate-600"
+                        onClick={(e) => handleViewReviews(e, doctor)}
+                      >
+                        <Star size={12} className={`${doctor.averageRating > 0 ? 'text-amber-400 fill-amber-400' : 'text-slate-300'} mr-1`} />
+                        <span className="font-bold mr-1">{doctor.averageRating > 0 ? doctor.averageRating : 'New'}</span>
+                        <span className="text-slate-400">({doctor.totalReviews || 0})</span>
+                      </div>
                     </div>
                   </div>
+                </div>
+
+                <div className="mt-2 mb-2">
+                  {doctor.Availabilities && doctor.Availabilities.length > 0 ? (
+                    <span className="inline-flex items-center text-green-700 bg-green-50 border border-green-200 px-2.5 py-1 rounded-full text-xs font-semibold">
+                      <span className="relative flex h-2 w-2 mr-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                      </span>
+                      {t('findDoctor.available')}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-full text-xs font-medium">
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-400 mr-2"></span>
+                      {t('findDoctor.unavailable')}
+                    </span>
+                  )}
                 </div>
                 
                 <button 
                   onClick={() => handleSelectDoctor(doctor)}
                   className="w-full mt-4 flex items-center justify-center py-2.5 bg-slate-50 hover:bg-primary-50 text-slate-700 hover:text-primary-700 font-medium rounded-lg border border-slate-200 hover:border-primary-200 transition"
                 >
-                  View Availability <ChevronRight size={16} className="ml-1" />
+                  {t('findDoctor.viewAvailability')} <ChevronRight size={16} className="ml-1" />
                 </button>
               </div>
             </div>
@@ -172,7 +217,7 @@ const FindDoctor = () => {
                   {selectedDoctor.name.charAt(0)}
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-800">Book Appointment</h3>
+                  <h3 className="font-bold text-slate-800">{t('findDoctor.bookAppointment')}</h3>
                   <p className="text-xs font-medium text-primary-600">Dr. {selectedDoctor.name} &bull; {selectedDoctor.specialty}</p>
                 </div>
               </div>
@@ -187,15 +232,15 @@ const FindDoctor = () => {
             <div className="flex-1 overflow-y-auto p-6 md:p-8 flex flex-col md:flex-row gap-8">
               {/* Left Column: Slots */}
               <div className="w-full md:w-1/2 flex flex-col">
-                <h4 className="font-semibold text-slate-800 mb-4 flex items-center"><Calendar size={18} className="mr-2 text-primary-500" /> Select an available slot</h4>
+                <h4 className="font-semibold text-slate-800 mb-4 flex items-center"><Calendar size={18} className="mr-2 text-primary-500" /> {t('findDoctor.selectSlot')}</h4>
                 
                 {fetchingSlots ? (
-                  <div className="flex-1 flex items-center justify-center text-slate-400 p-8">Loading availability...</div>
+                  <div className="flex-1 flex items-center justify-center text-slate-400 p-8">{t('findDoctor.loading')}</div>
                 ) : availabilities.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 text-center">
                     <Calendar size={32} className="text-slate-300 mb-2" />
-                    <p className="font-medium">No available slots</p>
-                    <p className="text-xs mt-1">Please check back later or choose another doctor.</p>
+                    <p className="font-medium">{t('findDoctor.noSlots')}</p>
+                    <p className="text-xs mt-1">{t('findDoctor.checkBack')}</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3 overflow-y-auto max-h-[300px] pr-2 hidden-scrollbar">
@@ -225,30 +270,62 @@ const FindDoctor = () => {
 
               {/* Right Column: Form */}
               <div className="w-full md:w-1/2 flex flex-col">
-                <h4 className="font-semibold text-slate-800 mb-4 flex items-center"><Activity size={18} className="mr-2 text-primary-500" /> Consultation Details</h4>
+                <h4 className="font-semibold text-slate-800 mb-4 flex items-center"><Activity size={18} className="mr-2 text-primary-500" /> {t('findDoctor.details')}</h4>
                 
                 {!selectedSlot ? (
                   <div className="flex-1 flex items-center justify-center text-slate-400 p-8 bg-slate-50 border border-slate-200 rounded-xl">
-                    <p className="text-center text-sm">Please select a time slot first to proceed with booking.</p>
+                    <p className="text-center text-sm">{t('findDoctor.selectFirst')}</p>
                   </div>
                 ) : (
                   <form id="booking-form" onSubmit={handleBookAppointment} className="flex flex-col flex-1 space-y-4">
-                    <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Reason for Visit</label>
-                      <input 
-                        type="text" required
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                        placeholder="e.g. Headache"
-                        value={bookingForm.reason}
-                        onChange={e => setBookingForm({...bookingForm, reason: e.target.value})}
-                      />
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">{t('findDoctor.reason')}</label>
+                        <select 
+                          required
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 bg-white"
+                          value={bookingForm.commonReason}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setBookingForm({
+                              ...bookingForm, 
+                              commonReason: val, 
+                              reason: val === 'Other' ? '' : val
+                            });
+                          }}
+                        >
+                          <option value="" disabled>{t('findDoctor.selectReason')}</option>
+                          <option value="General Checkup">{t('findDoctor.diseases.general')}</option>
+                          <option value="Fever / Cold / Flu">{t('findDoctor.diseases.fever')}</option>
+                          <option value="Headache / Migraine">{t('findDoctor.diseases.headache')}</option>
+                          <option value="Stomach Ache / Digestion">{t('findDoctor.diseases.stomach')}</option>
+                          <option value="Skin Infection / Allergy">{t('findDoctor.diseases.skin')}</option>
+                          <option value="Joint / Muscle Pain">{t('findDoctor.diseases.joint')}</option>
+                          <option value="Breathing Issue / Cough">{t('findDoctor.diseases.breathing')}</option>
+                          <option value="Dental Issue">{t('findDoctor.diseases.dental')}</option>
+                          <option value="Eye / Vision Problem">{t('findDoctor.diseases.eye')}</option>
+                          <option value="Other">{t('findDoctor.diseases.other')}</option>
+                        </select>
+                      </div>
+                      
+                      {bookingForm.commonReason === 'Other' && (
+                        <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+                          <input 
+                            type="text" required autoFocus
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                            placeholder={t('findDoctor.specifyReason')}
+                            value={bookingForm.reason}
+                            onChange={e => setBookingForm({...bookingForm, reason: e.target.value})}
+                          />
+                        </div>
+                      )}
                     </div>
                     <div className="flex-1 flex flex-col">
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Symptoms Description</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">{t('findDoctor.symptoms')}</label>
                       <textarea 
                         required 
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 flex-1 resize-none"
-                        placeholder="Detail your symptoms..."
+                        placeholder={t('findDoctor.detailSymptoms')}
                         value={bookingForm.symptoms_description}
                         onChange={e => setBookingForm({...bookingForm, symptoms_description: e.target.value})}
                       ></textarea>
@@ -265,7 +342,7 @@ const FindDoctor = () => {
                 onClick={() => setSelectedDoctor(null)}
                 className="px-5 py-2 text-slate-600 hover:bg-slate-100 font-medium rounded-lg mr-3 transition"
               >
-                Cancel
+                {t('findDoctor.cancel')}
               </button>
               <button 
                 type="submit" 
@@ -273,12 +350,65 @@ const FindDoctor = () => {
                 disabled={!selectedSlot || isSubmitting}
                 className="px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-lg transition disabled:opacity-50 disabled:hover:bg-primary-600 flex items-center"
               >
-                {isSubmitting ? 'Booking...' : 'Confirm Appointment'}
+                {isSubmitting ? t('findDoctor.booking') : t('findDoctor.confirm')}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Reviews Modal */}
+      {reviewsModal.isOpen && reviewsModal.doctor && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
+              <div>
+                <h3 className="font-bold text-slate-800 flex items-center">
+                  <Star size={18} className="text-amber-400 fill-amber-400 mr-2" />
+                  Reviews for Dr. {reviewsModal.doctor.name}
+                </h3>
+              </div>
+              <button 
+                onClick={() => setReviewsModal({ isOpen: false, doctor: null, reviews: [], loading: false })}
+                className="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-200 transition"
+              >
+                &times;
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+              {reviewsModal.loading ? (
+                <div className="flex justify-center p-8"><Activity className="animate-spin text-primary-500" /></div>
+              ) : reviewsModal.reviews.length === 0 ? (
+                <div className="text-center p-8 text-slate-500">
+                  <MessageSquare size={32} className="mx-auto mb-2 text-slate-300" />
+                  <p>No reviews yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {reviewsModal.reviews.map(review => (
+                    <div key={review.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="font-medium text-sm text-slate-800">{review.Patient?.name || 'Anonymous'}</div>
+                        <div className="flex">
+                          {[1,2,3,4,5].map(star => (
+                            <Star key={star} size={12} className={star <= review.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-200'} />
+                          ))}
+                        </div>
+                      </div>
+                      {review.comment && <p className="text-sm text-slate-600 mt-1">{review.comment}</p>}
+                      <div className="text-[10px] text-slate-400 mt-3 uppercase font-medium">
+                        {new Date(review.created_at).toLocaleDateString()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

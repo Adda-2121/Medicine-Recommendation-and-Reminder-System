@@ -47,6 +47,14 @@ const Consultation = sequelize.define('Consultation', {
   status: {
     type: DataTypes.ENUM('pending', 'assigned', 'completed'),
     defaultValue: 'pending',
+  },
+  severity_level: {
+    type: DataTypes.ENUM('low', 'medium', 'high'),
+    defaultValue: 'low',
+  },
+  queue_status: {
+    type: DataTypes.ENUM('waiting', 'assigned', 'completed'),
+    defaultValue: 'waiting',
   }
 }, {
   timestamps: true,

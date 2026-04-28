@@ -35,6 +35,10 @@ const Payment = sequelize.define('Payment', {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  chapa_tx_ref: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   amount: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: true,

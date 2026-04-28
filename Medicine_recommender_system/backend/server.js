@@ -2,7 +2,8 @@ require('dotenv').config();
 const http = require('http');
 const { Server } = require('socket.io');
 const app = require('./app');
-const { sequelize, ChatMessage } = require('./models');
+const { sequelize, ChatMessage, Consultation, User } = require('./models');
+const { sendPushNotification } = require('./utils/pushHelper');
 
 const PORT = process.env.PORT || 5000;
 
@@ -48,18 +49,71 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // data expects: { consultation_id, sender_id, message, attachment_url }
+      // data expects: { consultation_id, sender_id, message, attachment_url, chat_type }
       const savedMessage = await ChatMessage.create({
         consultation_id: data.consultation_id,
         sender_id: data.sender_id,
         message: data.message || '',
-        attachment_url: data.attachment_url || null
+        attachment_url: data.attachment_url || null,
+        chat_type: data.chat_type || 'patient'
       });
 
       // Emit back to everyone in the room (including sender)
       io.to(data.consultation_id).emit('receive_message', savedMessage);
+
+      // Web Push Notification to recipient
+      const consultationInfo = await Consultation.findByPk(data.consultation_id);
+      if (consultationInfo) {
+        const recipientId = data.sender_id === consultationInfo.patient_id ? consultationInfo.doctor_id : consultationInfo.patient_id;
+        if (recipientId) {
+          sendPushNotification(
+            recipientId,
+            'New Message',
+            'You have received a new message in your consultation.',
+            'chat',
+            '/consultations'
+          );
+        }
+      }
     } catch (error) {
       console.error('Socket message save error:', error);
+    }
+  });
+
+  // Handle message deletion logic
+  socket.on('delete_messages', async (data) => {
+    try {
+      // data expects: { consultation_id, message_ids: [], mode: 'me' | 'everyone', requester_id, requester_role }
+      const { consultation_id, message_ids, mode, requester_id, requester_role } = data;
+      
+      for (const msgId of message_ids) {
+        const msg = await ChatMessage.findByPk(msgId);
+        if (!msg) continue;
+
+        if (mode === 'everyone') {
+          // Check if sender owns the message and it's within 10 minutes
+          const isSender = msg.sender_id === requester_id;
+          const timeDiff = Date.now() - new Date(msg.timestamp).getTime();
+          const within10Mins = timeDiff <= 10 * 60 * 1000;
+          
+          if (isSender && within10Mins) {
+            msg.is_deleted_everyone = true;
+            await msg.save();
+          }
+        } else if (mode === 'me') {
+          if (requester_role === 'patient') {
+            msg.deleted_by_patient = true;
+          } else if (requester_role === 'doctor') {
+            msg.deleted_by_doctor = true;
+          }
+          await msg.save();
+        }
+      }
+
+      // Tell everyone in the room that messages were deleted (so UI can remove them)
+      io.to(consultation_id).emit('messages_deleted', { message_ids, mode, requester_role });
+    } catch (error) {
+      console.error('Socket message delete error:', error);
     }
   });
 
@@ -91,12 +145,45 @@ io.on('connection', (socket) => {
 
 // Test DB Connection and Start Server
 sequelize.authenticate()
-  .then(() => {
+  .then(async () => {
     console.log('PostgreSQL Database connected successfully.');
+    // Inject laboratorist into ENUM safely before sync
+    try {
+      await sequelize.query(`ALTER TYPE "enum_Users_role" ADD VALUE IF NOT EXISTS 'laboratorist';`);
+      await sequelize.query(`ALTER TYPE "enum_Users_role" ADD VALUE IF NOT EXISTS 'radiologist';`);
+      console.log('Ensure laboratorist and radiologist roles exist in ENUM');
+
+      // Add new enum values for LabTest (if it still exists in db)
+      await sequelize.query(`ALTER TYPE "enum_LabTests_status" ADD VALUE IF NOT EXISTS 'in_progress';`).catch(() => {});
+      console.log('Ensure in_progress status exists in LabTest ENUM');
+
+      // Add chat_type enum for ChatMessage
+      await sequelize.query(`CREATE TYPE "enum_ChatMessages_chat_type" AS ENUM ('patient', 'laboratorist');`).catch(() => {});
+      await sequelize.query(`ALTER TYPE "enum_ChatMessages_chat_type" ADD VALUE IF NOT EXISTS 'radiologist';`).catch(() => {});
+      console.log('Ensure chat_type enum exists in ChatMessages');
+    } catch (err) {
+      // Ignore if type doesn't exist yet (first run) or other error
+      console.error('Enum alteration error:', err.message);
+    }
+    
+    // Seed default settings
+    try {
+      const { Setting } = require('./models');
+      await Setting.findOrCreate({
+        where: { key: 'consultation_fee' },
+        defaults: { value: '100' }
+      });
+    } catch (err) {
+      console.error('Error seeding settings:', err.message);
+    }
+    
     // Sync models (creates tables if they don't exist)
     return sequelize.sync({ alter: true }); 
   })
-  .then(() => {
+  .then(async () => {
+    const drugController = require('./controllers/drugController');
+    await drugController.autoSeedDrugs();
+    
     // START the HTTP SERVER (which includes Socket.io) instead of app.listen
     server.listen(PORT, () => {
       console.log(`Server & WebSockets are running on port ${PORT}`);

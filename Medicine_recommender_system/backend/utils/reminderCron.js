@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const { Op } = require('sequelize');
 const { Reminder, User } = require('../models');
 const sendEmail = require('./sendEmail');
+const { sendPushNotification } = require('./pushHelper');
 
 // Check every minute
 cron.schedule('* * * * *', async () => {
@@ -56,6 +57,15 @@ cron.schedule('* * * * *', async () => {
         if (global.io) {
           global.io.to(`user_${reminder.patient_id}`).emit('reminder_alert', reminder);
         }
+
+        // Web Push notification
+        await sendPushNotification(
+          reminder.patient_id,
+          `${reminder.reminder_type === 'medicine' ? 'Medicine' : 'Measurement'} Reminder`,
+          `It's time for your scheduled reminder.`,
+          'reminder',
+          '/reminders'
+        );
       }
     }
   } catch (error) {

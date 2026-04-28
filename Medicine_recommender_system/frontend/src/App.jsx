@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './contexts/AuthContext';
 import Login from './pages/Login';
@@ -6,9 +6,9 @@ import Register from './pages/Register';
 import PatientDashboard from './pages/PatientDashboard';
 import DoctorDashboard from './pages/DoctorDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import SpecialistDashboard from './pages/SpecialistDashboard';
 import Sidebar from './components/Sidebar';
 import { Activity } from 'lucide-react';
-
 import Consultations from './pages/Consultations';
 import Reminders from './pages/Reminders';
 import History from './pages/History';
@@ -19,6 +19,8 @@ import ResetPassword from './pages/ResetPassword';
 import VerifyOtp from './pages/VerifyOtp';
 import FindDoctor from './pages/FindDoctor';
 import { PublicLayout, Landing, Features, About, Contact } from './pages/PublicPages';
+import { initializePushNotifications } from './services/notificationService';
+import { Toaster } from 'react-hot-toast';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -33,6 +35,11 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 
 // Layout Component for authenticated users
 const DashboardLayout = ({ children }) => {
+  useEffect(() => {
+    // Only ask for permissions and setup when user is definitely logged in
+    initializePushNotifications();
+  }, []);
+
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
       <Sidebar />
@@ -85,6 +92,16 @@ const AppContent = () => {
           <DashboardLayout><AdminDashboard /></DashboardLayout>
         </ProtectedRoute>
       } />
+      <Route path="/laboratorist" element={
+        <ProtectedRoute allowedRoles={['laboratorist']}>
+          <DashboardLayout><SpecialistDashboard /></DashboardLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/radiologist" element={
+        <ProtectedRoute allowedRoles={['radiologist']}>
+          <DashboardLayout><SpecialistDashboard /></DashboardLayout>
+        </ProtectedRoute>
+      } />
 
       {/* Additional Common Protected Routes */}
       <Route path="/consultations" element={
@@ -125,6 +142,7 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <Toaster position="top-right" />
         <AppContent />
       </AuthProvider>
     </BrowserRouter>

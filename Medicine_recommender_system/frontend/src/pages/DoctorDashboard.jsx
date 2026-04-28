@@ -11,8 +11,11 @@ import {
   Bell,
   Calendar,
   Plus,
-  Trash2
+  Trash2,
+  Star
 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 
 const DoctorDashboard = () => {
   const { user } = useContext(AuthContext);
@@ -29,10 +32,29 @@ const DoctorDashboard = () => {
   const [newSlot, setNewSlot] = useState({ date: '', start_time: '', end_time: '' });
   const [isAddingSlot, setIsAddingSlot] = useState(false);
 
+  // Reviews State
+  const [reviewsData, setReviewsData] = useState({ averageRating: 0, totalReviews: 0, testimonials: [] });
+  const [loadingReviews, setLoadingReviews] = useState(false);
+
+  const [modalConfig, setModalConfig] = useState({ isOpen: false, slotId: null });
+
   useEffect(() => {
     fetchConsultations();
     fetchAvailabilities();
+    fetchReviews();
   }, []);
+
+  const fetchReviews = async () => {
+    try {
+      setLoadingReviews(true);
+      const res = await api.get(`/testimonials/provider/${user.id}`);
+      setReviewsData(res.data);
+    } catch (err) {
+      console.error('Failed to fetch reviews', err);
+    } finally {
+      setLoadingReviews(false);
+    }
+  };
 
   const fetchConsultations = async () => {
     try {
@@ -70,20 +92,24 @@ const DoctorDashboard = () => {
       fetchAvailabilities();
     } catch (err) {
       console.error(err);
-      alert('Failed to add slot');
+      toast.error('Failed to add slot');
     } finally {
       setIsAddingSlot(false);
     }
   };
 
-  const handleDeleteSlot = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this available slot?')) return;
+  const confirmDelete = (id) => {
+    setModalConfig({ isOpen: true, slotId: id });
+  };
+
+  const executeDelete = async () => {
     try {
-      await api.delete(`/availability/${id}`);
+      await api.delete(`/availability/${modalConfig.slotId}`);
       fetchAvailabilities();
+      setModalConfig({ isOpen: false, slotId: null });
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || 'Failed to delete slot');
+      toast.error(err.response?.data?.message || 'Failed to delete slot');
     }
   };
 
@@ -133,6 +159,12 @@ const DoctorDashboard = () => {
           className={`py-3 px-6 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'availability' ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
         >
           My Availability Schedule
+        </button>
+        <button 
+          onClick={() => setActiveTab('reviews')}
+          className={`py-3 px-6 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'reviews' ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+        >
+          My Reviews
         </button>
       </div>
 
@@ -214,7 +246,7 @@ const DoctorDashboard = () => {
                                 ${c.status === 'completed' ? 'bg-green-100 text-green-800' : 
                                   c.status === 'in_progress' ? 'bg-blue-100 text-blue-800' : 
                                   'bg-amber-100 text-amber-800'}`}>
-                                {c.status.replace('_', ' ')}
+                                {c.status === 'completed' ? 'Completed' : (c.status === 'in_progress' ? 'Pending' : c.status.replace('_', ' '))}
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -323,7 +355,7 @@ const DoctorDashboard = () => {
                       
                       {!slot.is_booked && (
                         <button 
-                          onClick={() => handleDeleteSlot(slot.id)}
+                          onClick={() => confirmDelete(slot.id)}
                           className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
                           title="Delete slot"
                         >
@@ -338,6 +370,69 @@ const DoctorDashboard = () => {
           </div>
         </div>
       )}
+
+      {activeTab === 'reviews' && (
+        <div className="flex-1 overflow-y-auto pr-2 pb-6">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6 flex items-center">
+            <div className="bg-amber-100 text-amber-600 p-4 rounded-full mr-4 flex items-center justify-center">
+              <Star size={32} className="fill-amber-500 text-amber-500" />
+            </div>
+            <div>
+              <p className="text-slate-500 font-medium">Average Rating</p>
+              <div className="flex items-end">
+                <h3 className="text-3xl font-bold text-slate-800 mr-2">{reviewsData.averageRating > 0 ? reviewsData.averageRating : 'N/A'}</h3>
+                <p className="text-slate-500 mb-1">({reviewsData.totalReviews} total reviews)</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1">
+            <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+              <h2 className="font-semibold text-slate-800 text-lg">Patient Feedback</h2>
+            </div>
+            
+            <div className="p-6">
+              {loadingReviews ? (
+                <div className="text-center text-slate-400 py-8">Loading reviews...</div>
+              ) : reviewsData.testimonials.length === 0 ? (
+                <div className="text-center text-slate-500 py-12">
+                  <Star size={40} className="mx-auto text-slate-300 mb-3" />
+                  <p>You have no reviews yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {reviewsData.testimonials.map(review => (
+                    <div key={review.id} className="border border-slate-100 bg-slate-50 rounded-xl p-5">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <div className="font-bold text-slate-800">{review.Patient?.name || 'Anonymous'}</div>
+                          <div className="text-xs text-slate-400 mt-0.5">{new Date(review.created_at).toLocaleDateString()}</div>
+                        </div>
+                        <div className="flex">
+                          {[1,2,3,4,5].map(star => (
+                            <Star key={star} size={14} className={star <= review.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-200'} />
+                          ))}
+                        </div>
+                      </div>
+                      {review.comment && <p className="text-sm text-slate-700 italic border-l-2 border-slate-300 pl-3 py-1">"{review.comment}"</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ConfirmationModal
+        isOpen={modalConfig.isOpen}
+        onClose={() => setModalConfig({ isOpen: false, slotId: null })}
+        onConfirm={executeDelete}
+        title="Delete Slot"
+        message="Are you sure you want to delete this available slot? Patients will no longer be able to book it."
+        confirmText="Delete"
+        isDanger={true}
+      />
     </div>
   );
 };

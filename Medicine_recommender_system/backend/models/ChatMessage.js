@@ -32,6 +32,22 @@ const ChatMessage = sequelize.define('ChatMessage', {
   attachment_url: {
     type: DataTypes.STRING,
     allowNull: true,
+  },
+  chat_type: {
+    type: DataTypes.ENUM('patient', 'laboratorist'),
+    defaultValue: 'patient',
+  },
+  deleted_by_patient: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  deleted_by_doctor: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  is_deleted_everyone: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
   }
 }, {
   timestamps: true, // Adds createdAt automatically for timestamping

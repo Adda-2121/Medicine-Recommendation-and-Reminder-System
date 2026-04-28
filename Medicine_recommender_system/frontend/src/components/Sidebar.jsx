@@ -1,7 +1,10 @@
 import React, { useContext } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../contexts/AuthContext';
 import api from '../services/api';
+import LanguageSwitcher from './common/LanguageSwitcher';
+import NotificationBell from './common/NotificationBell';
 import { 
   LayoutDashboard, 
   MessageSquare, 
@@ -17,6 +20,7 @@ import {
 const Sidebar = () => {
   const { user, logout } = useContext(AuthContext);
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const handleLogout = () => {
     logout();
@@ -26,27 +30,34 @@ const Sidebar = () => {
   const getMenuItems = () => {
     if (user?.role === 'company_admin') {
       return [
-        { path: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
-        { path: '/profile', icon: UserCircle, label: 'Profile' }
+        { path: '/admin', icon: LayoutDashboard, label: t('sidebar.dashboard') },
+        { path: '/profile', icon: UserCircle, label: t('sidebar.profile') }
       ];
     }
 
     if (user?.role === 'patient') {
       return [
-        { path: `/patient`, icon: LayoutDashboard, label: 'Dashboard' },
-        { path: '/find-doctor', icon: Search, label: 'Find Doctor' },
-        { path: '/consultations', icon: MessageSquare, label: 'Consultations / Chat' },
-        { path: '/reminders', icon: Bell, label: 'Reminders' },
-        { path: '/history', icon: History, label: 'History' },
-        { path: '/profile', icon: UserCircle, label: 'Profile' }
+        { path: `/patient`, icon: LayoutDashboard, label: t('sidebar.dashboard') },
+        { path: '/find-doctor', icon: Search, label: t('sidebar.findDoctor') },
+        { path: '/consultations', icon: MessageSquare, label: t('sidebar.consultations') },
+        { path: '/reminders', icon: Bell, label: t('sidebar.reminders') },
+        { path: '/history', icon: History, label: t('sidebar.history') },
+        { path: '/profile', icon: UserCircle, label: t('sidebar.profile') }
+      ];
+    }
+
+    if (user?.role === 'laboratorist' || user?.role === 'radiologist') {
+      return [
+        { path: `/${user.role}`, icon: LayoutDashboard, label: t('sidebar.dashboard') || 'Dashboard' },
+        { path: '/profile', icon: UserCircle, label: t('sidebar.profile') || 'Profile' }
       ];
     }
 
     return [
-      { path: `/doctor`, icon: LayoutDashboard, label: 'Dashboard' },
-      { path: '/consultations', icon: MessageSquare, label: 'Consultations / Chat' },
-      { path: '/history', icon: History, label: 'History' },
-      { path: '/profile', icon: UserCircle, label: 'Profile' }
+      { path: `/doctor`, icon: LayoutDashboard, label: t('sidebar.dashboard') },
+      { path: '/consultations', icon: MessageSquare, label: t('sidebar.consultations') },
+      { path: '/history', icon: History, label: t('sidebar.history') },
+      { path: '/profile', icon: UserCircle, label: t('sidebar.profile') }
     ];
   };
 
@@ -61,23 +72,26 @@ const Sidebar = () => {
       </div>
 
       {/* User Info */}
-      <div className="p-5 border-b border-slate-800 flex items-center">
-        <div className="h-10 w-10 rounded-full bg-slate-800 flex items-center justify-center text-primary-500 font-bold overflow-hidden border border-slate-700 mr-3 flex-shrink-0">
-           {user.profile_picture ? (
-              <img src={`${api.defaults.baseURL?.replace(/\/api$/, '') || 'http://localhost:5000'}${user.profile_picture}`} alt="User" className="w-full h-full object-cover" />
-           ) : (
-              user.name.charAt(0)
-           )}
+      <div className="p-5 border-b border-slate-800 flex items-center justify-between relative z-50">
+        <div className="flex items-center overflow-hidden">
+          <div className="h-10 w-10 rounded-full bg-slate-800 flex items-center justify-center text-primary-500 font-bold overflow-hidden border border-slate-700 mr-3 flex-shrink-0">
+             {user.profile_picture ? (
+                <img src={`${api.defaults.baseURL?.replace(/\/api$/, '') || 'http://localhost:5000'}${user.profile_picture}`} alt="User" className="w-full h-full object-cover" />
+             ) : (
+                user.name.charAt(0)
+             )}
+          </div>
+          <div className="overflow-hidden">
+            <p className="text-[10px] text-slate-500 uppercase font-semibold mb-0.5">Signed in as</p>
+            <p className="font-medium text-white truncate text-sm">{user.name}</p>
+            <p className="text-[10px] text-primary-400 capitalize">{user.role.replace('_', ' ')}</p>
+          </div>
         </div>
-        <div className="overflow-hidden">
-          <p className="text-[10px] text-slate-500 uppercase font-semibold mb-0.5">Signed in as</p>
-          <p className="font-medium text-white truncate text-sm">{user.name}</p>
-          <p className="text-[10px] text-primary-400 capitalize">{user.role.replace('_', ' ')}</p>
-        </div>
+        <NotificationBell />
       </div>
 
       {/* Navigation Links */}
-      <nav className="flex-1 py-4 overflow-y-auto">
+      <nav className="flex-1 py-4 overflow-y-auto hidden-scrollbar">
         <ul className="space-y-1 px-3">
           {getMenuItems().map((item) => (
             <li key={item.path}>
@@ -99,14 +113,15 @@ const Sidebar = () => {
         </ul>
       </nav>
 
-      {/* Bottom Area (Logout) */}
-      <div className="p-4 border-t border-slate-800">
+      {/* Bottom Area (Language + Logout) */}
+      <div className="p-4 border-t border-slate-800 flex flex-col gap-3">
+        <LanguageSwitcher />
         <button
           onClick={handleLogout}
           className="flex items-center w-full px-3 py-2.5 rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors group"
         >
           <LogOut size={20} className="mr-3 shrink-0" />
-          <span className="font-medium text-sm">Logout</span>
+          <span className="font-medium text-sm">{t('publicLayout.logout') || 'Logout'}</span>
         </button>
       </div>
     </aside>

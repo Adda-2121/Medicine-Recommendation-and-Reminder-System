@@ -16,7 +16,7 @@ exports.register = async (req, res) => {
     if (/\d/.test(name)) {
       return res.status(400).json({ message: 'Name cannot contain numbers.' });
     }
-    
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ message: 'Please provide a valid email format.' });
@@ -118,7 +118,7 @@ exports.login = async (req, res) => {
     const token = jwt.sign(
       payload,
       process.env.JWT_SECRET || 'secret123',
-      { 
+      {
         expiresIn: '7d',
         algorithm: 'HS256'
       }
@@ -138,6 +138,8 @@ exports.login = async (req, res) => {
         email: user.email,
         role: user.role,
         profile_picture: user.profile_picture,
+        specializations: user.specializations,
+        work_location: user.work_location,
       },
     });
   } catch (error) {
@@ -154,7 +156,7 @@ exports.getMe = async (req, res) => {
     const user = await User.findByPk(req.user.id, {
       attributes: { exclude: ['password'] }
     });
-    
+
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -172,7 +174,7 @@ exports.getMe = async (req, res) => {
 exports.forgotPassword = async (req, res) => {
   try {
     const { method, identifier } = req.body;
-    
+
     // Support legacy requests that only send email
     const resetMethod = method || 'email';
     const resetIdentifier = identifier || req.body.email;
@@ -226,7 +228,7 @@ exports.forgotPassword = async (req, res) => {
     } else if (resetMethod === 'sms') {
       // SMS Reset Logic (6-digit OTP)
       const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
-      
+
       user.resetOtp = crypto
         .createHash('sha256')
         .update(otp)
@@ -235,7 +237,7 @@ exports.forgotPassword = async (req, res) => {
       await user.save();
 
       const message = `Your HealthConnect password reset code is: ${otp}. It expires in 10 minutes.`;
-      
+
       // MOCK SMS PROVIDER
       console.log(`\n\n========== MOCK SMS ==========\nTo: ${user.phone_number}\nMessage: ${message}\n==============================\n\n`);
 
@@ -290,13 +292,13 @@ exports.resetPassword = async (req, res) => {
     }
 
     if (!req.body.password || req.body.password.length < 8) {
-       return res.status(400).json({ message: 'Password must be at least 8 characters long.' });
+      return res.status(400).json({ message: 'Password must be at least 8 characters long.' });
     }
 
     // Set new password
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(req.body.password, salt);
-    
+
     // Clear both token and OTP fields
     user.resetPasswordToken = null;
     user.resetPasswordExpire = null;

@@ -2,6 +2,8 @@ import React, { useState, useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import api from '../services/api';
 import { User, Mail, Lock, Shield, Calendar, Edit3, Save, X, Eye, EyeOff, UploadCloud, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import ConfirmationModal from '../components/common/ConfirmationModal';
 
 const Profile = () => {
   const { user } = useContext(AuthContext);
@@ -21,6 +23,8 @@ const Profile = () => {
     newPassword: '',
     confirmPassword: ''
   });
+
+  const [modalConfig, setModalConfig] = useState({ isOpen: false });
 
   const handleEditToggle = () => {
     setIsEditing(!isEditing);
@@ -43,11 +47,11 @@ const Profile = () => {
         email: formData.email, 
         phone: formData.phone 
       });
-      alert(res.data.message || 'Profile updated successfully.');
+      toast.success(res.data.message || 'Profile updated successfully.');
       setIsEditing(false);
       // Optional: Update user in AuthContext if needed
     } catch (err) {
-       alert(err.response?.data?.message || 'Failed to update profile');
+       toast.error(err.response?.data?.message || 'Failed to update profile');
     }
   };
 
@@ -65,45 +69,49 @@ const Profile = () => {
       });
       window.location.reload();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to update profile picture');
+      toast.error(err.response?.data?.message || 'Failed to update profile picture');
       setProfileLoading(false);
     }
   };
 
-  const handleRemoveProfilePic = async () => {
-    if (!window.confirm('Are you sure you want to remove your profile picture?')) return;
+  const confirmRemoveProfilePic = () => {
+    setModalConfig({ isOpen: true });
+  };
+
+  const executeRemoveProfilePic = async () => {
     try {
       setProfileLoading(true);
       await api.put('/users/profile', { remove_picture: true });
       window.location.reload();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to remove profile picture');
+      toast.error(err.response?.data?.message || 'Failed to remove profile picture');
       setProfileLoading(false);
     }
+    setModalConfig({ isOpen: false });
   };
 
 
   const handlePasswordSave = async (e) => {
     e.preventDefault();
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      return alert('Passwords do not match');
+      return toast.error('Passwords do not match');
     }
     if (passwordData.newPassword.length < 8) {
-      return alert('Password must be at least 8 characters long');
+      return toast.error('Password must be at least 8 characters long');
     }
     if (!passwordData.currentPassword) {
-      return alert('Please enter your current password');
+      return toast.error('Please enter your current password');
     }
     try {
       const res = await api.put('/users/profile', { 
         currentPassword: passwordData.currentPassword, 
         newPassword: passwordData.newPassword 
       });
-      alert(res.data.message || 'Password updated successfully.');
+      toast.success(res.data.message || 'Password updated successfully.');
       setIsEditingPassword(false);
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (err) {
-       alert(err.response?.data?.message || err.message || 'Failed to update password');
+       toast.error(err.response?.data?.message || err.message || 'Failed to update password');
     }
   };
 
@@ -138,7 +146,7 @@ const Profile = () => {
                 <input id="profile-upload" type="file" className="hidden" accept="image/jpeg, image/png, image/webp" onChange={handleProfilePicChange} />
               </div>
               {user?.profile_picture && !profileLoading && (
-                <button onClick={handleRemoveProfilePic} className="text-xs font-semibold text-rose-500 hover:text-rose-700 mt-3 hover:underline">Remove Picture</button>
+                <button onClick={confirmRemoveProfilePic} className="text-xs font-semibold text-rose-500 hover:text-rose-700 mt-3 hover:underline">Remove Picture</button>
               )}
               <h2 className={`text-2xl font-bold text-slate-800 ${!user?.profile_picture ? 'mt-4' : 'mt-2'}`}>{user?.name}</h2>
               <div className="flex items-center justify-center mt-2 group">
@@ -226,6 +234,18 @@ const Profile = () => {
                      <option>IST (GMT+5:30)</option>
                   </select>
                 </div>
+                
+                {(user?.role === 'laboratorist' || user?.role === 'radiologist') && (
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Capabilities / Specializations</label>
+                    <input 
+                      type="text" disabled={true}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-slate-50 text-slate-500 cursor-not-allowed"
+                      value={user?.specializations?.join(', ') || 'None assigned'}
+                    />
+                    <p className="text-xs text-slate-400 mt-1">Please contact your administrator to update your assigned capabilities.</p>
+                  </div>
+                )}
               </div>
               
               <div className="pt-4 border-t border-slate-100 flex justify-end">
@@ -318,6 +338,16 @@ const Profile = () => {
           </div>
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={modalConfig.isOpen}
+        onClose={() => setModalConfig({ isOpen: false })}
+        onConfirm={executeRemoveProfilePic}
+        title="Remove Profile Picture"
+        message="Are you sure you want to remove your profile picture?"
+        confirmText="Remove"
+        isDanger={true}
+      />
     </div>
   );
 };
