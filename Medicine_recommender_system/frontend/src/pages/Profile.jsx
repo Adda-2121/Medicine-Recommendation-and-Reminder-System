@@ -1,4 +1,5 @@
 import React, { useState, useContext } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../contexts/AuthContext';
 import api from '../services/api';
 import { User, Mail, Lock, Shield, Calendar, Edit3, Save, X, Eye, EyeOff, UploadCloud, Loader2 } from 'lucide-react';
@@ -7,6 +8,7 @@ import ConfirmationModal from '../components/common/ConfirmationModal';
 
 const Profile = () => {
   const { user } = useContext(AuthContext);
+  const { t } = useTranslation();
   const [profileLoading, setProfileLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -119,8 +121,8 @@ const Profile = () => {
     <div className="flex flex-col h-full bg-slate-50">
       <div className="flex justify-between items-center mb-8 pb-4 border-b border-slate-200">
         <div>
-          <h1 className="text-3xl font-bold text-slate-800 tracking-tight">My Profile</h1>
-          <p className="text-slate-500 mt-1 text-sm md:text-base">Manage your personal information and account settings.</p>
+          <h1 className="text-3xl font-bold text-slate-800 tracking-tight">{t('profile.title')}</h1>
+          <p className="text-slate-500 mt-1 text-sm md:text-base">{t('profile.subtitle')}</p>
         </div>
       </div>
 
@@ -146,7 +148,7 @@ const Profile = () => {
                 <input id="profile-upload" type="file" className="hidden" accept="image/jpeg, image/png, image/webp" onChange={handleProfilePicChange} />
               </div>
               {user?.profile_picture && !profileLoading && (
-                <button onClick={confirmRemoveProfilePic} className="text-xs font-semibold text-rose-500 hover:text-rose-700 mt-3 hover:underline">Remove Picture</button>
+                <button onClick={confirmRemoveProfilePic} className="text-xs font-semibold text-rose-500 hover:text-rose-700 mt-3 hover:underline">{t('profile.removePicture')}</button>
               )}
               <h2 className={`text-2xl font-bold text-slate-800 ${!user?.profile_picture ? 'mt-4' : 'mt-2'}`}>{user?.name}</h2>
               <div className="flex items-center justify-center mt-2 group">
@@ -167,7 +169,7 @@ const Profile = () => {
                  </div>
                  <div className="flex items-center text-slate-600">
                     <Calendar size={18} className="text-slate-400 mr-3" />
-                    <span className="text-sm font-medium">Joined {new Date(user?.createdAt || Date.now()).toLocaleDateString()}</span>
+                    <span className="text-sm font-medium">{t('profile.joined', { date: new Date(user?.createdAt || Date.now()).toLocaleDateString() })}</span>
                  </div>
               </div>
             </div>
@@ -180,21 +182,21 @@ const Profile = () => {
             <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
               <h3 className="text-xl font-bold text-slate-800 flex items-center">
                 <User size={20} className="mr-2 text-primary-500" />
-                Personal Information
+                {t('profile.personalInfo')}
               </h3>
               {!isEditing ? (
                 <button 
                   onClick={handleEditToggle}
                   className="text-primary-600 hover:bg-primary-50 px-4 py-2 rounded-lg transition font-medium text-sm flex items-center border border-primary-200"
                 >
-                  <Edit3 size={16} className="mr-2" /> Edit Profile
+                  <Edit3 size={16} className="mr-2" /> {t('profile.editProfile')}
                 </button>
               ) : (
                 <button 
                   onClick={handleEditToggle}
                   className="text-slate-500 hover:bg-slate-100 px-4 py-2 rounded-lg transition font-medium text-sm flex items-center border border-slate-200"
                 >
-                  <X size={16} className="mr-2" /> Cancel
+                  <X size={16} className="mr-2" /> {t('common.cancel')}
                 </button>
               )}
             </div>
@@ -202,7 +204,7 @@ const Profile = () => {
             <form onSubmit={handleSave} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Full Name</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">{t('profile.fullName')}</label>
                   <input 
                     type="text" required disabled={!isEditing}
                     className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50 disabled:text-slate-500 transition-colors"
@@ -210,7 +212,7 @@ const Profile = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Email Address</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">{t('profile.emailAddress')}</label>
                   <input 
                     type="email" required disabled={!isEditing}
                     className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50 disabled:text-slate-500 transition-colors"
@@ -218,15 +220,15 @@ const Profile = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Phone Number</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">{t('profile.phoneNumber')}</label>
                   <input 
-                    type="tel" disabled={!isEditing} placeholder="+1 (555) 000-0000"
+                    type="tel" disabled={!isEditing} placeholder={t('profile.phonePlaceholder')}
                     className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50 disabled:text-slate-500 transition-colors"
                     value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Timezone</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">{t('profile.timezone')}</label>
                   <select disabled={!isEditing} className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50 disabled:text-slate-500 transition-colors appearance-none">
                      <option>UTC (GMT+0)</option>
                      <option>EST (GMT-5)</option>
@@ -237,13 +239,13 @@ const Profile = () => {
                 
                 {(user?.role === 'laboratorist' || user?.role === 'radiologist') && (
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Capabilities / Specializations</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">{t('profile.capabilities')}</label>
                     <input 
                       type="text" disabled={true}
                       className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-slate-50 text-slate-500 cursor-not-allowed"
-                      value={user?.specializations?.join(', ') || 'None assigned'}
+                      value={user?.specializations?.join(', ') || t('profile.noneAssigned')}
                     />
-                    <p className="text-xs text-slate-400 mt-1">Please contact your administrator to update your assigned capabilities.</p>
+                    <p className="text-xs text-slate-400 mt-1">{t('profile.contactAdmin')}</p>
                   </div>
                 )}
               </div>
@@ -254,7 +256,7 @@ const Profile = () => {
                     type="submit" 
                     className="bg-primary-600 text-white px-8 py-3 rounded-lg hover:bg-primary-700 transition font-medium shadow-sm flex items-center"
                   >
-                    <Save size={18} className="mr-2" /> Save Changes
+                    <Save size={18} className="mr-2" /> {t('common.saveChanges')}
                   </button>
                 )}
               </div>
@@ -266,28 +268,28 @@ const Profile = () => {
             <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
               <h3 className="text-xl font-bold text-slate-800 flex items-center">
                 <Lock size={20} className="mr-2 text-red-500" />
-                Security
+                {t('profile.security')}
               </h3>
             </div>
             <div className="flex flex-col gap-4 mt-4">
               {!isEditingPassword ? (
                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
                     <div>
-                      <h4 className="font-medium text-slate-800 mb-1">Password</h4>
-                      <p className="text-sm text-slate-500">Keep your account secure by using a strong password</p>
+                      <h4 className="font-medium text-slate-800 mb-1">{t('profile.password')}</h4>
+                      <p className="text-sm text-slate-500">{t('profile.passwordDesc')}</p>
                     </div>
                     <button 
                       onClick={() => setIsEditingPassword(true)}
                       className="bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-md hover:bg-slate-50 transition font-medium text-sm"
                     >
-                      Update Password
+                      {t('profile.updatePassword')}
                     </button>
                  </div>
               ) : (
                  <form onSubmit={handlePasswordSave} className="p-5 bg-slate-50 rounded-lg border border-slate-200">
                    <div className="space-y-4">
                      <div>
-                       <label className="block text-sm font-medium text-slate-700 mb-1">Current Password</label>
+                       <label className="block text-sm font-medium text-slate-700 mb-1">{t('profile.currentPassword')}</label>
                        <div className="relative">
                          <input 
                             type={showPassword ? "text" : "password"} required
@@ -300,7 +302,7 @@ const Profile = () => {
                        </div>
                      </div>
                      <div>
-                       <label className="block text-sm font-medium text-slate-700 mb-1">New Password</label>
+                       <label className="block text-sm font-medium text-slate-700 mb-1">{t('profile.newPassword')}</label>
                        <div className="relative">
                          <input 
                             type={showPassword ? "text" : "password"} required minLength={8}
@@ -313,7 +315,7 @@ const Profile = () => {
                        </div>
                      </div>
                      <div>
-                       <label className="block text-sm font-medium text-slate-700 mb-1">Confirm New Password</label>
+                       <label className="block text-sm font-medium text-slate-700 mb-1">{t('profile.confirmNewPassword')}</label>
                        <div className="relative">
                          <input 
                             type={showPassword ? "text" : "password"} required minLength={8}
@@ -327,9 +329,9 @@ const Profile = () => {
                      </div>
                    </div>
                    <div className="mt-4 flex justify-end space-x-2">
-                     <button type="button" onClick={() => { setIsEditingPassword(false); setPasswordData({currentPassword:'', newPassword:'', confirmPassword:''}); setShowPassword(false); }} className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-100 text-sm font-medium">Cancel</button>
+                     <button type="button" onClick={() => { setIsEditingPassword(false); setPasswordData({currentPassword:'', newPassword:'', confirmPassword:''}); setShowPassword(false); }} className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-100 text-sm font-medium">{t('common.cancel')}</button>
                      <button type="submit" className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium shadow-sm flex items-center">
-                        <Save size={16} className="mr-2" /> Save Password
+                        <Save size={16} className="mr-2" /> {t('profile.savePassword')}
                      </button>
                    </div>
                 </form>
@@ -343,9 +345,9 @@ const Profile = () => {
         isOpen={modalConfig.isOpen}
         onClose={() => setModalConfig({ isOpen: false })}
         onConfirm={executeRemoveProfilePic}
-        title="Remove Profile Picture"
-        message="Are you sure you want to remove your profile picture?"
-        confirmText="Remove"
+        title={t('profile.removePictureTitle', 'Remove Profile Picture')}
+        message={t('profile.removePictureMsg', 'Are you sure you want to remove your profile picture?')}
+        confirmText={t('profile.removePicture')}
         isDanger={true}
       />
     </div>

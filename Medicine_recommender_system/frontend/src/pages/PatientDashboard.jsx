@@ -134,33 +134,191 @@ const PatientDashboard = () => {
           </div>
 
           <PatientServiceQueue />
+          <PendingFeedback />
         </>
       )}
     </div>
   );
 };
 
+// ─── Pending Feedback Component ───────────────────────────────────────────────
+const PendingFeedback = () => {
+  const [pending, setPending] = useState([]);   // completed consultations without a review
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState({ open: false, consultation: null, rating: 0, comment: '', submitting: false });
+
+  const fetchPending = async () => {
+    try {
+      const [consRes, testRes] = await Promise.all([
+        api.get('/consultations'),
+        api.get('/testimonials/my').catch(() => ({ data: [] }))
+      ]);
+      const reviewed = new Set(testRes.data.map(t => t.service_id));
+      const unreviewed = consRes.data.filter(
+        c => c.status === 'completed' && c.doctor_id && !reviewed.has(c.id)
+      );
+      setPending(unreviewed);
+    } catch (err) {
+      console.error('Failed to fetch pending feedback', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchPending(); }, []);
+
+  const openModal = (consultation) => {
+    setModal({ open: true, consultation, rating: 0, comment: '', submitting: false });
+  };
+
+  const closeModal = () => {
+    setModal({ open: false, consultation: null, rating: 0, comment: '', submitting: false });
+  };
+
+  const submit = async () => {
+    if (modal.rating === 0) return toast.error('Please select a star rating');
+    setModal(prev => ({ ...prev, submitting: true }));
+    try {
+      await api.post('/testimonials', {
+        service_id: modal.consultation.id,
+        service_type: 'consultation',
+        rating: modal.rating,
+        comment: modal.comment
+      });
+      toast.success('Thank you for your feedback!');
+      closeModal();
+      fetchPending();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to submit feedback');
+      setModal(prev => ({ ...prev, submitting: false }));
+    }
+  };
+
+  if (loading || pending.length === 0) return null;
+
+  const LABELS = { 1: 'Poor', 2: 'Fair', 3: 'Good', 4: 'Very Good', 5: 'Excellent' };
+
+  return (
+    <>
+      <div className="mt-8 bg-white rounded-xl shadow-sm border border-amber-200 p-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="bg-amber-100 text-amber-600 p-2 rounded-lg">
+            <Star size={20} className="fill-amber-500" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-slate-800">Rate Your Doctor</h2>
+            <p className="text-xs text-slate-500">You have {pending.length} completed consultation{pending.length > 1 ? 's' : ''} waiting for your feedback</p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {pending.map(c => (
+            <div key={c.id} className="flex items-center justify-between bg-amber-50 border border-amber-100 rounded-lg px-4 py-3">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-full bg-primary-100 text-primary-700 font-bold flex items-center justify-center text-sm shrink-0">
+                  {c.Doctor?.name?.charAt(0) || 'D'}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">Dr. {c.Doctor?.name || 'Doctor'}</p>
+                  <p className="text-xs text-slate-500">{c.reason || 'Consultation'} · {new Date(c.updated_at).toLocaleDateString()}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => openModal(c)}
+                className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition shadow-sm shrink-0"
+              >
+                <Star size={13} className="fill-white" /> Leave Rating
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Rating Modal */}
+      {modal.open && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-6">
+              <div className="h-12 w-12 rounded-full bg-primary-100 text-primary-700 font-bold flex items-center justify-center text-lg shrink-0">
+                {modal.consultation?.Doctor?.name?.charAt(0) || 'D'}
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800 text-lg">Rate Dr. {modal.consultation?.Doctor?.name}</h3>
+                <p className="text-xs text-slate-500">{modal.consultation?.reason || 'Consultation'}</p>
+              </div>
+            </div>
+
+            {/* Stars */}
+            <div className="flex justify-center gap-3 mb-2">
+              {[1, 2, 3, 4, 5].map(star => (
+                <button
+                  key={star}
+                  onClick={() => setModal(prev => ({ ...prev, rating: star }))}
+                  className="focus:outline-none transition-transform hover:scale-110 active:scale-95"
+                >
+                  <Star
+                    size={44}
+                    className={modal.rating >= star
+                      ? 'fill-amber-400 text-amber-400 drop-shadow-sm'
+                      : 'text-slate-200 fill-slate-100'}
+                  />
+                </button>
+              ))}
+            </div>
+            <p className="text-center text-sm font-medium text-amber-600 mb-5 h-5">
+              {modal.rating > 0 ? LABELS[modal.rating] : ''}
+            </p>
+
+            {/* Comment */}
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Comment <span className="text-slate-400 font-normal">(optional)</span>
+            </label>
+            <textarea
+              value={modal.comment}
+              onChange={e => setModal(prev => ({ ...prev, comment: e.target.value }))}
+              rows={3}
+              className="w-full border border-slate-300 rounded-xl p-3 text-sm resize-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none mb-5"
+              placeholder="How was your experience with this doctor?"
+            />
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={closeModal}
+                className="flex-1 py-2.5 border border-slate-200 text-slate-600 font-medium rounded-xl hover:bg-slate-50 transition text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submit}
+                disabled={modal.submitting || modal.rating === 0}
+                className="flex-1 py-2.5 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl transition disabled:opacity-50 text-sm flex items-center justify-center gap-2"
+              >
+                <Star size={14} className={modal.rating > 0 ? 'fill-amber-300 text-amber-300' : 'text-white'} />
+                {modal.submitting ? 'Submitting...' : 'Submit Rating'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+// ─── Service Queue Component ───────────────────────────────────────────────────
 const PatientServiceQueue = () => {
   const [serviceReqs, setServiceReqs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [myTestimonials, setMyTestimonials] = useState([]);
-
-  // Feedback Modal State
-  const [feedbackModal, setFeedbackModal] = useState({ isOpen: false, serviceId: null, type: null, providerName: '' });
-  const [rating, setRating] = useState(0);
-  const [comment, setComment] = useState('');
-  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
   // Check for Chapa payment return
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tx_ref = params.get('payment_ref');
     if (tx_ref) {
-      // Call verify
       api.get(`/chapa/verify/${tx_ref}`)
-        .then(res => {
+        .then(() => {
           toast.success('Payment Verified Successfully!');
-          // Remove from URL
           window.history.replaceState({}, document.title, '/patient');
           fetchQueue();
         })
@@ -174,12 +332,8 @@ const PatientServiceQueue = () => {
 
   const fetchQueue = async () => {
     try {
-      const [reqsRes, testsRes] = await Promise.all([
-        api.get('/service-requests/queue'),
-        api.get('/testimonials/my').catch(() => ({ data: [] }))
-      ]);
-      setServiceReqs(reqsRes.data);
-      setMyTestimonials(testsRes.data);
+      const res = await api.get('/service-requests/queue');
+      setServiceReqs(res.data);
     } catch (err) {
       console.error('Failed to fetch service queue', err);
     } finally {
@@ -189,7 +343,7 @@ const PatientServiceQueue = () => {
 
   useEffect(() => {
     fetchQueue();
-    const interval = setInterval(fetchQueue, 30000); // Polling every 30s
+    const interval = setInterval(fetchQueue, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -201,37 +355,6 @@ const PatientServiceQueue = () => {
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Payment initialization failed');
-    }
-  };
-
-  const openFeedback = (test) => {
-    setFeedbackModal({
-      isOpen: true,
-      serviceId: test.id,
-      type: test.service_type,
-      providerName: test.Specialist?.name || 'Specialist'
-    });
-    setRating(0);
-    setComment('');
-  };
-
-  const submitFeedback = async () => {
-    if (rating === 0) return toast.error('Please select a rating');
-    setIsSubmittingFeedback(true);
-    try {
-      await api.post('/testimonials', {
-        service_id: feedbackModal.serviceId,
-        service_type: feedbackModal.type,
-        rating,
-        comment
-      });
-      toast.success('Feedback submitted successfully!');
-      setFeedbackModal({ isOpen: false, serviceId: null, type: null, providerName: '' });
-      fetchQueue();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to submit feedback');
-    } finally {
-      setIsSubmittingFeedback(false);
     }
   };
 
@@ -262,7 +385,7 @@ const PatientServiceQueue = () => {
                 <strong>Location:</strong> {test.Specialist?.work_location || (test.service_type === 'radiology' ? 'Radiology Department (Pending Assignment)' : 'Laboratory Department (Pending Assignment)')}
               </p>
               <p className="text-sm text-slate-500">
-                <strong>Assigned To:</strong> {test.Specialist ? `Dr./Mr. ${test.Specialist.name} (${test.service_type})` : 'Waiting for specialist assignment...'}
+                <strong>Assigned To:</strong> {test.Specialist ? `${test.Specialist.name} (${test.service_type})` : 'Waiting for specialist assignment...'}
               </p>
             </div>
 
@@ -288,74 +411,14 @@ const PatientServiceQueue = () => {
                 </button>
               )}
               {test.status === 'completed' && (
-                myTestimonials.find(t => t.service_id === test.id) ? (
-                  <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-2 rounded-full flex items-center">
-                    <Star size={14} className="mr-1 fill-emerald-600" /> Feedback Submitted
-                  </span>
-                ) : (
-                  <button
-                    onClick={() => openFeedback(test)}
-                    className="text-sm font-bold text-white bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-lg shadow-sm transition flex items-center"
-                  >
-                    <MessageSquare size={16} className="mr-1" /> Leave Feedback
-                  </button>
-                )
+                <span className="text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 px-3 py-2 rounded-full">
+                  ✓ Service Completed
+                </span>
               )}
             </div>
           </div>
         ))}
       </div>
-
-      {/* Feedback Modal */}
-      {feedbackModal.isOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex justify-center items-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md">
-            <h3 className="text-xl font-bold text-slate-800 mb-2">Rate Your Experience</h3>
-            <p className="text-sm text-slate-500 mb-6">How was your service with Specialist {feedbackModal.providerName}?</p>
-
-            <div className="flex justify-center space-x-2 mb-6">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  type="button"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRating(star); }}
-                  className="focus:outline-none transition-transform hover:scale-110"
-                >
-                  <Star
-                    size={36}
-                    className={`${rating >= star ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`}
-                  />
-                </button>
-              ))}
-            </div>
-
-            <label className="block text-sm font-medium text-slate-700 mb-1">Comment (Optional)</label>
-            <textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              className="w-full border border-slate-300 rounded-lg p-3 mb-6 min-h-[100px] resize-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-              placeholder="Share details of your experience..."
-            ></textarea>
-
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => setFeedbackModal({ isOpen: false, serviceId: null, type: null, providerName: '' })}
-                className="px-4 py-2 text-slate-600 hover:bg-slate-100 font-medium rounded-lg transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={submitFeedback}
-                disabled={isSubmittingFeedback || rating === 0}
-                className="px-6 py-2 bg-primary-600 text-white font-bold rounded-lg hover:bg-primary-700 disabled:opacity-50 transition"
-              >
-                {isSubmittingFeedback ? 'Submitting...' : 'Submit Feedback'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 };

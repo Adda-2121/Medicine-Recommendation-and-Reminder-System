@@ -12,7 +12,8 @@ import {
   Calendar,
   Plus,
   Trash2,
-  Star
+  Star,
+  ClipboardList
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ConfirmationModal from '../components/common/ConfirmationModal';
@@ -102,6 +103,16 @@ const DoctorDashboard = () => {
     setModalConfig({ isOpen: true, slotId: id });
   };
 
+  const handleCompleteConsultation = async (id) => {
+    try {
+      await api.put(`/consultations/${id}/complete`);
+      toast.success('Consultation marked as completed. Patient can now leave feedback.');
+      fetchConsultations();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to complete consultation');
+    }
+  };
+
   const executeDelete = async () => {
     try {
       await api.delete(`/availability/${modalConfig.slotId}`);
@@ -159,6 +170,12 @@ const DoctorDashboard = () => {
           className={`py-3 px-6 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'availability' ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
         >
           My Availability Schedule
+        </button>
+        <button 
+          onClick={() => setActiveTab('history')}
+          className={`py-3 px-6 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'history' ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+        >
+          Clinical History
         </button>
         <button 
           onClick={() => setActiveTab('reviews')}
@@ -250,12 +267,22 @@ const DoctorDashboard = () => {
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                              <button 
-                                onClick={() => navigate(`/consultations?id=${c.id}`)}
-                                className="bg-white border border-slate-200 text-primary-600 hover:bg-primary-50 hover:border-primary-200 px-4 py-2 rounded-md transition-all shadow-sm flex items-center justify-center ml-auto"
-                              >
-                                <MessageSquare size={16} className="mr-2" /> Open Chat
-                              </button>
+                              <div className="flex items-center justify-end gap-2">
+                                {c.status !== 'completed' && (
+                                  <button
+                                    onClick={() => handleCompleteConsultation(c.id)}
+                                    className="bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 px-3 py-1.5 rounded-md transition-all shadow-sm text-xs font-bold flex items-center"
+                                  >
+                                    <CheckCircle size={13} className="mr-1" /> Complete
+                                  </button>
+                                )}
+                                <button 
+                                  onClick={() => navigate(`/consultations?id=${c.id}`)}
+                                  className="bg-white border border-slate-200 text-primary-600 hover:bg-primary-50 hover:border-primary-200 px-3 py-1.5 rounded-md transition-all shadow-sm text-xs font-bold flex items-center"
+                                >
+                                  <MessageSquare size={13} className="mr-1" /> Chat
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -371,50 +398,99 @@ const DoctorDashboard = () => {
         </div>
       )}
 
+      {activeTab === 'history' && (
+        <div className="flex-1 overflow-y-auto pr-2 pb-6">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center">
+            <ClipboardList size={48} className="mx-auto text-slate-300 mb-4" />
+            <h3 className="text-lg font-semibold text-slate-700 mb-2">Full Clinical Records</h3>
+            <p className="text-slate-500 text-sm mb-4">View your complete consultation history, all prescriptions issued, and treatment plans in one place.</p>
+            <button
+              onClick={() => navigate('/history')}
+              className="bg-primary-600 hover:bg-primary-700 text-white font-bold px-6 py-2.5 rounded-lg transition shadow-sm"
+            >
+              Open Clinical History
+            </button>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'reviews' && (
         <div className="flex-1 overflow-y-auto pr-2 pb-6">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6 flex items-center">
-            <div className="bg-amber-100 text-amber-600 p-4 rounded-full mr-4 flex items-center justify-center">
-              <Star size={32} className="fill-amber-500 text-amber-500" />
-            </div>
-            <div>
-              <p className="text-slate-500 font-medium">Average Rating</p>
-              <div className="flex items-end">
-                <h3 className="text-3xl font-bold text-slate-800 mr-2">{reviewsData.averageRating > 0 ? reviewsData.averageRating : 'N/A'}</h3>
-                <p className="text-slate-500 mb-1">({reviewsData.totalReviews} total reviews)</p>
+          {/* Rating Summary Card */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+            <div className="flex flex-col sm:flex-row items-center gap-6">
+              {/* Big average */}
+              <div className="flex flex-col items-center justify-center bg-amber-50 border border-amber-100 rounded-xl px-8 py-5 shrink-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <Star size={28} className="fill-amber-400 text-amber-400" />
+                  <span className="text-4xl font-bold text-slate-800">
+                    {reviewsData.averageRating > 0 ? reviewsData.averageRating : '—'}
+                  </span>
+                </div>
+                <p className="text-sm text-slate-500">{reviewsData.totalReviews} review{reviewsData.totalReviews !== 1 ? 's' : ''}</p>
+              </div>
+
+              {/* Star distribution bars */}
+              <div className="flex-1 w-full space-y-1.5">
+                {[5, 4, 3, 2, 1].map(n => {
+                  const count = reviewsData.testimonials.filter(r => r.rating === n).length;
+                  const pct = reviewsData.totalReviews > 0 ? Math.round((count / reviewsData.totalReviews) * 100) : 0;
+                  return (
+                    <div key={n} className="flex items-center gap-2 text-sm">
+                      <span className="w-4 text-right text-slate-500 font-medium">{n}</span>
+                      <Star size={12} className="fill-amber-400 text-amber-400 shrink-0" />
+                      <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                        <div className="bg-amber-400 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="w-8 text-xs text-slate-400">{count}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1">
-            <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+          {/* Reviews List */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
               <h2 className="font-semibold text-slate-800 text-lg">Patient Feedback</h2>
             </div>
-            
             <div className="p-6">
               {loadingReviews ? (
-                <div className="text-center text-slate-400 py-8">Loading reviews...</div>
+                <div className="space-y-4 animate-pulse">
+                  {[1,2,3].map(i => <div key={i} className="h-20 bg-slate-100 rounded-xl" />)}
+                </div>
               ) : reviewsData.testimonials.length === 0 ? (
-                <div className="text-center text-slate-500 py-12">
-                  <Star size={40} className="mx-auto text-slate-300 mb-3" />
-                  <p>You have no reviews yet.</p>
+                <div className="text-center text-slate-500 py-16">
+                  <Star size={44} className="mx-auto text-slate-200 mb-3" />
+                  <p className="font-medium text-slate-600">No reviews yet</p>
+                  <p className="text-sm mt-1 text-slate-400">Reviews will appear here after patients complete consultations with you.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {reviewsData.testimonials.map(review => (
-                    <div key={review.id} className="border border-slate-100 bg-slate-50 rounded-xl p-5">
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <div className="font-bold text-slate-800">{review.Patient?.name || 'Anonymous'}</div>
-                          <div className="text-xs text-slate-400 mt-0.5">{new Date(review.created_at).toLocaleDateString()}</div>
+                    <div key={review.id} className="border border-slate-100 bg-slate-50 rounded-xl p-5 hover:border-slate-200 transition">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center gap-3">
+                          <div className="h-9 w-9 rounded-full bg-primary-100 text-primary-700 font-bold flex items-center justify-center text-sm shrink-0">
+                            {review.Patient?.name?.charAt(0) || '?'}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-slate-800 text-sm">{review.Patient?.name || 'Anonymous'}</div>
+                            <div className="text-xs text-slate-400">{new Date(review.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</div>
+                          </div>
                         </div>
-                        <div className="flex">
+                        <div className="flex gap-0.5">
                           {[1,2,3,4,5].map(star => (
-                            <Star key={star} size={14} className={star <= review.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-200'} />
+                            <Star key={star} size={15} className={star <= review.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-200 fill-slate-200'} />
                           ))}
                         </div>
                       </div>
-                      {review.comment && <p className="text-sm text-slate-700 italic border-l-2 border-slate-300 pl-3 py-1">"{review.comment}"</p>}
+                      {review.comment && (
+                        <p className="text-sm text-slate-600 italic border-l-2 border-amber-200 pl-3 py-1 mt-2 bg-white rounded-r-lg">
+                          "{review.comment}"
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -1,4 +1,4 @@
-const { Testimonial, Consultation, ServiceRequest, User } = require('../models');
+const { Testimonial, Consultation, User } = require('../models');
 
 // @desc    Submit a new testimonial
 // @route   POST /api/testimonials
@@ -21,23 +21,14 @@ exports.submitTestimonial = async (req, res) => {
 
     // Verify service exists and is completed, and belongs to patient
     let provider_id = null;
-    let isCompleted = false;
 
     if (service_type === 'consultation') {
       const consultation = await Consultation.findOne({ where: { id: service_id, patient_id: req.user.id } });
       if (!consultation) return res.status(404).json({ message: 'Consultation not found' });
       if (consultation.status !== 'completed') return res.status(400).json({ message: 'Service must be completed before leaving feedback' });
       provider_id = consultation.doctor_id;
-      isCompleted = true;
-    } else if (service_type === 'laboratory' || service_type === 'radiology') {
-      const serviceReq = await ServiceRequest.findOne({ where: { id: service_id, patient_id: req.user.id } });
-      if (!serviceReq) return res.status(404).json({ message: 'Service request not found' });
-      if (serviceReq.status !== 'completed') return res.status(400).json({ message: 'Service must be completed before leaving feedback' });
-      // The provider here is the specialist
-      provider_id = serviceReq.specialist_id;
-      isCompleted = true;
     } else {
-      return res.status(400).json({ message: 'Invalid service type' });
+      return res.status(400).json({ message: 'Feedback can only be submitted for doctor consultations' });
     }
 
     if (!provider_id) {
@@ -82,7 +73,7 @@ exports.getProviderTestimonials = async (req, res) => {
       include: [
         { model: User, as: 'Patient', attributes: ['id', 'name'] }
       ],
-      order: [['createdAt', 'DESC']]
+      order: [['created_at', 'DESC']]
     });
 
     // Calculate average rating
@@ -111,7 +102,7 @@ exports.getMyTestimonials = async (req, res) => {
       include: [
         { model: User, as: 'Provider', attributes: ['id', 'name', 'role'] }
       ],
-      order: [['createdAt', 'DESC']]
+      order: [['created_at', 'DESC']]
     });
 
     return res.status(200).json(testimonials);

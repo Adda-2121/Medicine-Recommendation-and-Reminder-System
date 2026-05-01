@@ -31,6 +31,14 @@ const TreatmentPlan = sequelize.define('TreatmentPlan', {
   follow_up_needed: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
+  },
+  is_cured: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  cured_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
   }
 }, {
   timestamps: true,

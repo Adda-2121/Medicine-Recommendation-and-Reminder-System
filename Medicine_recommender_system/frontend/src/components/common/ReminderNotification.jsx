@@ -1,4 +1,4 @@
-import React, { useEffect, useContext, useState } from 'react';
+import React, { useEffect, useContext, useState, useRef } from 'react';
 import { AuthContext } from '../../contexts/AuthContext';
 import io from 'socket.io-client';
 import { Bell, X } from 'lucide-react';
@@ -10,6 +10,9 @@ const socket = io(SOCKET_URL);
 const ReminderNotification = () => {
     const { user } = useContext(AuthContext);
     const [alerts, setAlerts] = useState([]);
+    const audioCtxRef = useRef(null);
+    const intervalRef = useRef(null);
+    const timeoutRef = useRef(null);
 
     useEffect(() => {
         if (user) {
@@ -19,8 +22,11 @@ const ReminderNotification = () => {
             // Listen for push alerts
             const handleAlert = (reminder) => {
                 if (reminder.patient_id === user.id) {
-                    setAlerts(prev => [...prev, reminder]);
-                    playAlarm();
+                    setAlerts(prev => {
+                        // Prevent duplicate alerts
+                        if (prev.find(r => r.id === reminder.id)) return prev;
+                        return [...prev, reminder];
+                    });
                 }
             };
             
@@ -32,39 +38,92 @@ const ReminderNotification = () => {
         }
     }, [user]);
 
-    const playAlarm = () => {
-        try {
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            const ctx = new AudioContext();
-            
-            // Create a beep-beep sound simulation
-            const playBeep = (startTime) => {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
+    // Handle repetitive alarm ringing
+    useEffect(() => {
+        const playDoubleBeep = () => {
+            try {
+                if (!audioCtxRef.current) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContext) {
+                        audioCtxRef.current = new AudioContext();
+                    } else {
+                        return; // Not supported
+                    }
+                }
+                const ctx = audioCtxRef.current;
                 
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(880, startTime);
-                osc.frequency.setValueAtTime(1200, startTime + 0.1);
-                
-                gain.gain.setValueAtTime(0, startTime);
-                gain.gain.linearRampToValueAtTime(1, startTime + 0.05);
-                gain.gain.linearRampToValueAtTime(0, startTime + 0.25);
-                
-                osc.start(startTime);
-                osc.stop(startTime + 0.25);
-            };
-            
-            // Play double beep
-            playBeep(ctx.currentTime);
-            playBeep(ctx.currentTime + 0.35);
+                // Resume context if suspended (browser autoplay policy)
+                if (ctx.state === 'suspended') {
+                    ctx.resume();
+                }
 
-        } catch (err) {
-            console.error('Web Audio API disabled or unsupported', err);
+                const createBeep = (startTimeOffset) => {
+                    const startTime = ctx.currentTime + startTimeOffset;
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(880, startTime);
+                    osc.frequency.setValueAtTime(1200, startTime + 0.1);
+                    
+                    gain.gain.setValueAtTime(0, startTime);
+                    gain.gain.linearRampToValueAtTime(1, startTime + 0.05);
+                    gain.gain.linearRampToValueAtTime(0, startTime + 0.25);
+                    
+                    osc.start(startTime);
+                    osc.stop(startTime + 0.25);
+                };
+
+                // Play double beep
+                createBeep(0);
+                createBeep(0.35);
+
+            } catch (err) {
+                console.error('Web Audio API disabled or unsupported', err);
+            }
+        };
+
+        const stopAlarm = () => {
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
+            if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+                timeoutRef.current = null;
+            }
+        };
+
+        if (alerts.length > 0) {
+            // Play immediately once
+            playDoubleBeep();
+            
+            // Start repetitive ringing every 2 seconds
+            if (!intervalRef.current) {
+                intervalRef.current = setInterval(() => {
+                    playDoubleBeep();
+                }, 2000);
+            }
+
+            // Stop automatically after 5 minutes (300,000 ms)
+            if (!timeoutRef.current) {
+                timeoutRef.current = setTimeout(() => {
+                    stopAlarm();
+                }, 5 * 60 * 1000);
+            }
+        } else {
+            // If all alerts are dismissed, stop the alarm
+            stopAlarm();
         }
-    };
+
+        return () => {
+            // Cleanup on unmount or when alerts change
+            stopAlarm();
+        };
+    }, [alerts]);
 
     const removeAlert = (id) => {
         setAlerts(prev => prev.filter(r => r.id !== id));

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
-import { Users, Activity, FileText, PieChart, ShieldPlus, Calendar, Stethoscope, Settings } from 'lucide-react';
+import { Users, Activity, FileText, PieChart, ShieldPlus, Calendar, Stethoscope, Settings, FlaskConical, CheckCircle2, Clock, CreditCard, UserX } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 import ConfirmationModal from '../components/common/ConfirmationModal';
@@ -419,84 +419,234 @@ const DoctorsTab = () => {
   );
 };
 
-const PatientsTab = () => {
-  const [patients, setPatients] = useState([]);
-  const [loading, setLoading] = useState(true);
+const STATUS_CATEGORIES = [
+  {
+    key: 'in_consultation',
+    label: 'Currently in Consultation',
+    icon: Stethoscope,
+    color: 'blue',
+    bg: 'bg-blue-50',
+    border: 'border-blue-200',
+    iconBg: 'bg-blue-100',
+    iconColor: 'text-blue-600',
+    badgeBg: 'bg-blue-100',
+    badgeText: 'text-blue-700',
+    description: 'Appointment booked, consultation ongoing or not yet completed',
+  },
+  {
+    key: 'completed_cured',
+    label: 'Completed / Cured',
+    icon: CheckCircle2,
+    color: 'emerald',
+    bg: 'bg-emerald-50',
+    border: 'border-emerald-200',
+    iconBg: 'bg-emerald-100',
+    iconColor: 'text-emerald-600',
+    badgeBg: 'bg-emerald-100',
+    badgeText: 'text-emerald-700',
+    description: 'Finished consultation, completed treatment, marked as cured by doctor',
+  },
+  {
+    key: 'paid_not_started',
+    label: 'Paid but Not Started Treatment',
+    icon: CreditCard,
+    color: 'amber',
+    bg: 'bg-amber-50',
+    border: 'border-amber-200',
+    iconBg: 'bg-amber-100',
+    iconColor: 'text-amber-600',
+    badgeBg: 'bg-amber-100',
+    badgeText: 'text-amber-700',
+    description: 'Payment verified but treatment has not started yet',
+  },
+  {
+    key: 'under_lab_process',
+    label: 'Under Lab Process',
+    icon: FlaskConical,
+    color: 'purple',
+    bg: 'bg-purple-50',
+    border: 'border-purple-200',
+    iconBg: 'bg-purple-100',
+    iconColor: 'text-purple-600',
+    badgeBg: 'bg-purple-100',
+    badgeText: 'text-purple-700',
+    description: 'Has a lab/radiology request with status pending or in progress',
+  },
+  {
+    key: 'inactive',
+    label: 'Inactive / Out of System',
+    icon: UserX,
+    color: 'slate',
+    bg: 'bg-slate-50',
+    border: 'border-slate-200',
+    iconBg: 'bg-slate-100',
+    iconColor: 'text-slate-500',
+    badgeBg: 'bg-slate-100',
+    badgeText: 'text-slate-600',
+    description: 'Registered but no activity for 30+ days',
+  },
+];
 
-  useEffect(() => {
-    const fetchPatients = async () => {
-      try {
-        const res = await api.get('/users?role=patient');
-        setPatients(res.data);
-      } catch (err) {
-        console.error('Failed to fetch patients', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchPatients();
-  }, []);
+const PatientStatusRow = ({ patient, categoryKey }) => {
+  const extra = () => {
+    if (categoryKey === 'in_consultation')
+      return (
+        <div className="flex gap-3 text-xs text-slate-500 mt-1">
+          <span>Status: <span className="font-medium text-slate-700 capitalize">{patient.consultation_status}</span></span>
+          <span>Severity: <span className={`font-medium capitalize ${patient.severity === 'high' ? 'text-red-600' : patient.severity === 'medium' ? 'text-amber-600' : 'text-green-600'}`}>{patient.severity}</span></span>
+          <span>Payment: <span className="font-medium text-slate-700 capitalize">{patient.payment_status}</span></span>
+        </div>
+      );
+    if (categoryKey === 'completed_cured')
+      return (
+        <div className="flex gap-3 text-xs text-slate-500 mt-1">
+          <span>Completed: <span className="font-medium text-slate-700">{new Date(patient.completed_at).toLocaleDateString()}</span></span>
+          {patient.cured_at && <span>· Cured: <span className="font-medium text-emerald-700">{new Date(patient.cured_at).toLocaleDateString()}</span></span>}
+          {patient.had_treatment_plan
+            ? <span className="text-emerald-600 font-medium">· Treatment plan issued</span>
+            : <span className="text-slate-400">· No treatment plan</span>}
+        </div>
+      );
+    if (categoryKey === 'paid_not_started')
+      return <p className="text-xs text-slate-500 mt-1">Payment verified · Consultation: <span className="capitalize">{patient.consultation_status}</span></p>;
+    if (categoryKey === 'under_lab_process')
+      return <p className="text-xs text-slate-500 mt-1">Pending lab requests: <span className="font-medium text-purple-700">{patient.pending_lab_requests}</span></p>;
+    if (categoryKey === 'inactive')
+      return <p className="text-xs text-slate-500 mt-1">Inactive for <span className="font-medium text-slate-700">{patient.days_inactive} days</span></p>;
+    return null;
+  };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-      <div className="mb-6">
-        <h3 className="font-semibold text-xl text-slate-800">Patient Accounts</h3>
-        <p className="text-slate-500 text-sm mt-1">View and manage registered patient accounts.</p>
+    <div className="flex items-start justify-between py-3 border-b border-slate-100 last:border-0">
+      <div className="flex items-center gap-3">
+        <div className="h-9 w-9 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold text-sm flex-shrink-0">
+          {patient.name?.charAt(0).toUpperCase()}
+        </div>
+        <div>
+          <p className="text-sm font-medium text-slate-800">{patient.name}</p>
+          <p className="text-xs text-slate-400">{patient.email}</p>
+          {extra()}
+        </div>
+      </div>
+      <p className="text-xs text-slate-400 whitespace-nowrap ml-4 mt-1">
+        Joined {new Date(patient.joined).toLocaleDateString()}
+      </p>
+    </div>
+  );
+};
+
+const PatientsTab = () => {
+  const [statusData, setStatusData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [activeCategory, setActiveCategory] = useState('in_consultation');
+  const [inactiveDays, setInactiveDays] = useState(30);
+
+  const fetchStatuses = async (days = inactiveDays) => {
+    setLoading(true);
+    try {
+      const res = await api.get(`/consultations/patient-statuses?inactive_days=${days}`);
+      setStatusData(res.data);
+    } catch (err) {
+      console.error('Failed to fetch patient statuses', err);
+      toast.error('Failed to load patient status data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchStatuses(); }, []);
+
+  const summary = statusData?.summary || {};
+  const patients = statusData?.data?.[activeCategory] || [];
+  const activeCat = STATUS_CATEGORIES.find(c => c.key === activeCategory);
+
+  return (
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        {STATUS_CATEGORIES.map(cat => {
+          const Icon = cat.icon;
+          const count = summary[cat.key] ?? 0;
+          const isActive = activeCategory === cat.key;
+          return (
+            <button
+              key={cat.key}
+              onClick={() => setActiveCategory(cat.key)}
+              className={`rounded-xl border-2 p-4 text-left transition-all hover:shadow-md ${isActive ? `${cat.border} ${cat.bg} shadow-md` : 'border-slate-200 bg-white hover:border-slate-300'}`}
+            >
+              <div className={`${cat.iconBg} ${cat.iconColor} p-2 rounded-lg inline-flex mb-3`}>
+                <Icon size={18} />
+              </div>
+              <p className="text-2xl font-bold text-slate-800">{loading ? '—' : count}</p>
+              <p className="text-xs font-medium text-slate-500 mt-1 leading-tight">{cat.label}</p>
+            </button>
+          );
+        })}
       </div>
 
-      {loading ? (
-        <div className="animate-pulse space-y-4">
-          <div className="h-4 bg-slate-200 rounded w-1/4"></div>
-          <div className="h-10 bg-slate-200 rounded w-full"></div>
-          <div className="h-10 bg-slate-200 rounded w-full"></div>
+      {/* Detail Panel */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+        <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {activeCat && (
+              <div className={`${activeCat.iconBg} ${activeCat.iconColor} p-2 rounded-lg`}>
+                <activeCat.icon size={18} />
+              </div>
+            )}
+            <div>
+              <h3 className="font-semibold text-slate-800">{activeCat?.label}</h3>
+              <p className="text-xs text-slate-500">{activeCat?.description}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {activeCategory === 'inactive' && (
+              <div className="flex items-center gap-2 text-sm">
+                <Clock size={14} className="text-slate-400" />
+                <label className="text-slate-500">Threshold:</label>
+                <select
+                  value={inactiveDays}
+                  onChange={e => { setInactiveDays(Number(e.target.value)); fetchStatuses(Number(e.target.value)); }}
+                  className="border border-slate-200 rounded-md px-2 py-1 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                >
+                  {[7, 14, 30, 60, 90].map(d => <option key={d} value={d}>{d} days</option>)}
+                </select>
+              </div>
+            )}
+            <span className={`${activeCat?.badgeBg} ${activeCat?.badgeText} text-xs font-bold px-3 py-1 rounded-full`}>
+              {patients.length} patient{patients.length !== 1 ? 's' : ''}
+            </span>
+          </div>
         </div>
-      ) : patients.length > 0 ? (
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
-              <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Name</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Email</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Joined Date</th>
-                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-slate-200">
-              {patients.map((patient) => (
-                <tr key={patient.id} className="hover:bg-slate-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold overflow-hidden border border-blue-200">
-                        {patient.profile_picture ? (
-                          <img src={`${api.defaults.baseURL?.replace(/\/api$/, '') || 'http://localhost:5000'}${patient.profile_picture}`} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          patient.name.charAt(0)
-                        )}
-                      </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-slate-900">{patient.name}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{patient.email}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                    {new Date(patient.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right">
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                      Active
-                    </span>
-                  </td>
-                </tr>
+
+        <div className="p-5">
+          {loading ? (
+            <div className="animate-pulse space-y-4">
+              {[1, 2, 3].map(i => <div key={i} className="h-14 bg-slate-100 rounded-lg" />)}
+            </div>
+          ) : patients.length > 0 ? (
+            <div>
+              {patients.map(p => (
+                <PatientStatusRow key={p.id} patient={p} categoryKey={activeCategory} />
               ))}
-            </tbody>
-          </table>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              {activeCat && (
+                <div className={`${activeCat.iconBg} ${activeCat.iconColor} p-4 rounded-full inline-flex mb-3`}>
+                  <activeCat.icon size={28} />
+                </div>
+              )}
+              <p className="text-slate-500 font-medium">No patients in this category</p>
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="text-center p-8 bg-slate-50 rounded-lg border border-dashed border-slate-300">
-          <Users className="mx-auto text-slate-400 mb-2" size={32} />
-          <p className="text-slate-500 font-medium">No patients found.</p>
-        </div>
+      </div>
+
+      {/* Total footer */}
+      {statusData && (
+        <p className="text-xs text-slate-400 text-right">
+          Total registered patients: <span className="font-semibold text-slate-600">{summary.total_patients}</span>
+        </p>
       )}
     </div>
   );

@@ -8,5 +8,6 @@ router.use(protect);
 router.post('/', authorize('doctor'), prescriptionController.createPrescription);
 router.get('/consultation/:consultationId', prescriptionController.getPrescriptionsByConsultation);
 router.get('/patient', prescriptionController.getPrescriptionsByPatient);
+router.get('/doctor', authorize('doctor'), prescriptionController.getPrescriptionsByDoctor);
 
 module.exports = router;

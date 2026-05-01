@@ -4,6 +4,142 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { User } = require('../models');
 const sendEmail = require('../utils/sendEmail');
+const { sendSMS } = require('../utils/smsService');
+const validateEmail = require('../utils/validateEmail');
+
+// In-memory OTP store keyed by identifier (email or phone)
+// { identifier -> { otp, expiresAt, verified, method } }
+const otpStore = new Map();
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+const startCooldownCleanup = (key) => {
+  setTimeout(() => otpStore.delete(key), 11 * 60 * 1000); // auto-clean after 11 min
+};
+
+// @desc    Send email verification OTP before registration
+// @route   POST /api/auth/send-verification
+// @access  Public
+exports.sendVerificationOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email is required.' });
+
+    // 1. Validate email is real (format + MX + disposable check)
+    const emailCheck = await validateEmail(email);
+    if (!emailCheck.valid) {
+      return res.status(400).json({ message: emailCheck.reason });
+    }
+
+    // 2. Check not already registered
+    const existing = await User.findOne({ where: { email } });
+    if (existing) {
+      return res.status(400).json({ message: 'An account with this email already exists.' });
+    }
+
+    // 3. Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 10 * 60 * 1000;
+    const key = email.toLowerCase();
+
+    otpStore.set(key, { otp, expiresAt, verified: false, method: 'email' });
+    startCooldownCleanup(key);
+
+    console.log(`\n🔐 [EMAIL OTP] ${email} → CODE: ${otp}  (expires in 10 min)\n`);
+
+    const message =
+      `Your HealthConnect email verification code is:\n\n` +
+      `  ${otp}\n\n` +
+      `This code expires in 10 minutes. Do not share it with anyone.\n\n` +
+      `If you did not request this, please ignore this email.`;
+
+    await sendEmail({ email, subject: 'HealthConnect — Email Verification Code', message });
+
+    return res.status(200).json({ message: 'Verification code sent to your email.' });
+  } catch (error) {
+    console.error('Send verification OTP error:', error);
+    return res.status(500).json({ message: 'Failed to send verification email. Please try again.' });
+  }
+};
+
+// @desc    Send SMS verification OTP before registration
+// @route   POST /api/auth/send-verification-sms
+// @access  Public
+exports.sendVerificationSms = async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ message: 'Phone number is required.' });
+
+    // Basic phone format check — must start with + and have 7-15 digits
+    const phoneRegex = /^\+[1-9]\d{6,14}$/;
+    if (!phoneRegex.test(phone.replace(/\s/g, ''))) {
+      return res.status(400).json({ message: 'Please enter a valid phone number with country code (e.g. +251911234567).' });
+    }
+
+    const normalised = phone.replace(/\s/g, '');
+
+    // Check not already registered with this phone
+    const existing = await User.findOne({ where: { phone_number: normalised } });
+    if (existing) {
+      return res.status(400).json({ message: 'An account with this phone number already exists.' });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 10 * 60 * 1000;
+
+    otpStore.set(normalised, { otp, expiresAt, verified: false, method: 'sms' });
+    startCooldownCleanup(normalised);
+
+    console.log(`\n🔐 [SMS OTP] ${normalised} → CODE: ${otp}  (expires in 10 min)\n`);
+
+    const sent = await sendSMS(normalised,
+      `Your HealthConnect verification code is: ${otp}. It expires in 10 minutes. Do not share it.`
+    );
+
+    if (!sent) {
+      return res.status(500).json({ message: 'Failed to send SMS. Please try email verification instead.' });
+    }
+
+    return res.status(200).json({ message: 'Verification code sent via SMS.' });
+  } catch (error) {
+    console.error('Send SMS OTP error:', error);
+    return res.status(500).json({ message: 'Failed to send SMS. Please try again.' });
+  }
+};
+
+// @desc    Verify OTP (email or SMS)
+// @route   POST /api/auth/verify-otp
+// @access  Public
+exports.verifyOtp = async (req, res) => {
+  try {
+    const { identifier, otp } = req.body; // identifier = email or phone
+    if (!identifier || !otp) return res.status(400).json({ message: 'Identifier and OTP are required.' });
+
+    const key = identifier.toLowerCase().replace(/\s/g, '');
+    const record = otpStore.get(key);
+
+    if (!record) {
+      return res.status(400).json({ message: 'No verification code found. Please request a new one.' });
+    }
+    if (Date.now() > record.expiresAt) {
+      otpStore.delete(key);
+      return res.status(400).json({ message: 'Verification code has expired. Please request a new one.' });
+    }
+    if (record.otp !== otp.toString().trim()) {
+      return res.status(400).json({ message: 'Incorrect verification code. Please try again.' });
+    }
+
+    record.verified = true;
+    otpStore.set(key, record);
+
+    return res.status(200).json({ message: 'Verified successfully.', method: record.method });
+  } catch (error) {
+    console.error('Verify OTP error:', error);
+    return res.status(500).json({ message: 'Server error verifying code.' });
+  }
+};
+
+// Keep old endpoint name as alias for backwards compatibility
+exports.verifyEmailOtp = exports.verifyOtp;
 
 // @desc    Register a new user
 // @route   POST /api/auth/register
@@ -17,10 +153,19 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message: 'Name cannot contain numbers.' });
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ message: 'Please provide a valid email format.' });
+    // Validate email — checks format, typo detection, disposable domains, and MX records
+    const emailCheck = await validateEmail(email);
+    if (!emailCheck.valid) {
+      return res.status(400).json({ message: emailCheck.reason });
     }
+
+    // Require OTP verification before account creation (email or phone)
+    const otpKey = email.toLowerCase();
+    const otpRecord = otpStore.get(otpKey);
+    if (!otpRecord || !otpRecord.verified) {
+      return res.status(400).json({ message: 'Identity must be verified before registering. Please complete the verification step.' });
+    }
+    otpStore.delete(otpKey);
 
     if (!password || password.length < 8) {
       return res.status(400).json({ message: 'Password must be at least 8 characters long.' });

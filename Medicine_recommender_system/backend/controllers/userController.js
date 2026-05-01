@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
+const validateEmail = require('../utils/validateEmail');
 
 
 // @desc    Get all users (filter by role optional)
@@ -99,6 +100,11 @@ exports.getVerifiedDoctors = async (req, res) => {
 exports.createUser = async (req, res) => {
   try {
     const { name, email, password, role, specialty, license_number, experience_years, lab_categories, work_location } = req.body;
+
+    const emailCheck = await validateEmail(email);
+    if (!emailCheck.valid) {
+      return res.status(400).json({ message: emailCheck.reason });
+    }
 
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {

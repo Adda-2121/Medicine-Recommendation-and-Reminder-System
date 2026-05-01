@@ -295,3 +295,193 @@ exports.triggerAutoAssignment = async () => {
     console.error('Error in auto assignment:', error);
   }
 };
+
+// @desc    Doctor marks a consultation as completed
+// @route   PUT /api/consultations/:id/complete
+// @access  Private (Doctor)
+exports.completeConsultation = async (req, res) => {
+  try {
+    const consultation = await Consultation.findByPk(req.params.id);
+
+    if (!consultation) {
+      return res.status(404).json({ message: 'Consultation not found' });
+    }
+
+    if (consultation.doctor_id !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized for this consultation' });
+    }
+
+    if (consultation.status === 'completed') {
+      return res.status(400).json({ message: 'Consultation is already completed' });
+    }
+
+    consultation.status = 'completed';
+    consultation.queue_status = 'completed';
+    await consultation.save();
+
+    // Free up doctor availability
+    const busyCount = await Consultation.count({
+      where: { doctor_id: req.user.id, status: { [Op.in]: ['pending', 'assigned'] } }
+    });
+    if (busyCount === 0) {
+      await User.update(
+        { availability_status: 'available' },
+        { where: { id: req.user.id } }
+      );
+    }
+
+    res.status(200).json({ message: 'Consultation completed successfully', consultation });
+  } catch (error) {
+    console.error('Complete consultation error:', error);
+    res.status(500).json({ message: 'Server error completing consultation' });
+  }
+};
+
+// @desc    Get patient status categories for admin dashboard
+// @route   GET /api/consultations/patient-statuses
+// @access  Private (Company Admin)
+exports.getPatientStatuses = async (req, res) => {
+  try {
+    const { TreatmentPlan, ServiceRequest } = require('../models');
+    const INACTIVE_DAYS = parseInt(req.query.inactive_days) || 30;
+    const inactiveCutoff = new Date(Date.now() - INACTIVE_DAYS * 24 * 60 * 60 * 1000);
+
+    // Fetch all patients with all consultations, payments, treatment plans, and active service requests
+    const patients = await User.findAll({
+      where: { role: 'patient' },
+      attributes: ['id', 'name', 'email', 'created_at', 'updated_at'],
+      include: [
+        {
+          model: Consultation,
+          as: 'PatientConsultations',
+          required: false,
+          include: [
+            { model: Payment, as: 'Payment', required: false },
+            { model: TreatmentPlan, required: false },
+            {
+              model: ServiceRequest,
+              required: false,
+              where: { status: { [Op.in]: ['pending', 'in_progress'] } },
+              separate: true // avoids cartesian product with other includes
+            }
+          ]
+        }
+      ]
+    });
+
+    const result = {
+      in_consultation: [],
+      completed_cured: [],
+      inactive: [],
+      paid_not_started: [],
+      under_lab_process: []
+    };
+
+    for (const patient of patients) {
+      const consultations = patient.PatientConsultations || [];
+      const patientData = {
+        id: patient.id,
+        name: patient.name,
+        email: patient.email,
+        joined: patient.created_at
+      };
+
+      // Last activity = most recent consultation update, or account creation date
+      const lastActivity = consultations.length > 0
+        ? new Date(Math.max(...consultations.map(c => new Date(c.updated_at))))
+        : new Date(patient.created_at);
+
+      const daysInactive = Math.floor((Date.now() - lastActivity) / (1000 * 60 * 60 * 24));
+
+      // ── Category 5: Under Lab Process ──────────────────────────────────────
+      // Has at least one service request with status pending OR in_progress
+      const labConsultation = consultations.find(c =>
+        c.ServiceRequests && c.ServiceRequests.length > 0
+      );
+      if (labConsultation) {
+        result.under_lab_process.push({
+          ...patientData,
+          consultation_id: labConsultation.id,
+          pending_lab_requests: labConsultation.ServiceRequests.length,
+          last_activity: lastActivity
+        });
+      }
+
+      // ── Category 1: Currently in Consultation ──────────────────────────────
+      // Has a consultation with status pending OR assigned (not yet completed)
+      const activeConsultation = consultations.find(c =>
+        c.status === 'pending' || c.status === 'assigned'
+      );
+      if (activeConsultation) {
+        result.in_consultation.push({
+          ...patientData,
+          consultation_id: activeConsultation.id,
+          consultation_status: activeConsultation.status,
+          severity: activeConsultation.severity_level,
+          payment_status: activeConsultation.Payment?.status || 'none',
+          appointment_date: activeConsultation.appointment_date,
+          appointment_time: activeConsultation.appointment_time
+        });
+        continue; // active consultation takes priority — skip lower categories
+      }
+
+      // ── Category 2: Completed / Cured ──────────────────────────────────────
+      // Consultation is completed (doctor marked it done, with or without a treatment plan)
+      const curedConsultation = consultations.find(c => c.status === 'completed');
+      if (curedConsultation) {
+        result.completed_cured.push({
+          ...patientData,
+          consultation_id: curedConsultation.id,
+          completed_at: curedConsultation.updated_at,
+          cured_at: curedConsultation.TreatmentPlan?.cured_at || null,
+          had_treatment_plan: !!curedConsultation.TreatmentPlan
+        });
+        continue;
+      }
+
+      // ── Category 4: Paid but Not Started Treatment ─────────────────────────
+      // Payment is verified AND consultation has no treatment plan yet
+      const paidNotStarted = consultations.find(c =>
+        c.Payment &&
+        c.Payment.status === 'verified' &&
+        !c.TreatmentPlan
+      );
+      if (paidNotStarted) {
+        result.paid_not_started.push({
+          ...patientData,
+          consultation_id: paidNotStarted.id,
+          payment_status: paidNotStarted.Payment.status,
+          consultation_status: paidNotStarted.status,
+          payment_verified_at: paidNotStarted.Payment.updated_at
+        });
+        continue;
+      }
+
+      // ── Category 3: Inactive / Out of System ──────────────────────────────
+      // Registered but no activity for the defined period (default 30 days)
+      if (consultations.length === 0 || daysInactive >= INACTIVE_DAYS) {
+        result.inactive.push({
+          ...patientData,
+          last_activity: lastActivity,
+          days_inactive: daysInactive
+        });
+      }
+    }
+
+    res.status(200).json({
+      summary: {
+        in_consultation: result.in_consultation.length,
+        completed_cured: result.completed_cured.length,
+        inactive: result.inactive.length,
+        paid_not_started: result.paid_not_started.length,
+        under_lab_process: result.under_lab_process.length,
+        total_patients: patients.length
+      },
+      inactive_threshold_days: INACTIVE_DAYS,
+      data: result
+    });
+  } catch (error) {
+    console.error('Get patient statuses error:', error);
+    res.status(500).json({ message: 'Server error fetching patient statuses' });
+  }
+};

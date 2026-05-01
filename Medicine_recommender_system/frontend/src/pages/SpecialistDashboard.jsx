@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import api from '../services/api';
-import { Activity, Clock, CheckCircle, FileText, UploadCloud, User, Stethoscope, AlertTriangle, PhoneCall, MessageSquare, Send, Star } from 'lucide-react';
+import { Activity, Clock, CheckCircle, FileText, UploadCloud, User, Stethoscope, AlertTriangle, PhoneCall, MessageSquare, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 
@@ -26,18 +26,11 @@ const SpecialistDashboard = () => {
 
   const [modalConfig, setModalConfig] = useState({ isOpen: false, msgId: null });
 
-  // Reviews State
-  const [reviewsData, setReviewsData] = useState({ averageRating: 0, totalReviews: 0, testimonials: [] });
-  const [loadingReviews, setLoadingReviews] = useState(false);
-
   const fetchRequests = async () => {
     try {
       setLoading(true);
-      // Fetches pending & in_progress requests
       const res = await api.get('/service-requests');
       setRequests(res.data);
-      
-      // Fetch completed requests
       const historyRes = await api.get('/service-requests?history=true');
       setHistoryRequests(historyRes.data);
     } catch (err) {
@@ -49,22 +42,9 @@ const SpecialistDashboard = () => {
 
   useEffect(() => {
     fetchRequests();
-    fetchReviews();
-    const interval = setInterval(fetchRequests, 30000); // Polling queue
+    const interval = setInterval(fetchRequests, 30000);
     return () => clearInterval(interval);
   }, []);
-
-  const fetchReviews = async () => {
-    try {
-      setLoadingReviews(true);
-      const res = await api.get(`/testimonials/provider/${user.id}`);
-      setReviewsData(res.data);
-    } catch (err) {
-      console.error('Failed to fetch reviews', err);
-    } finally {
-      setLoadingReviews(false);
-    }
-  };
 
   const handleUpdateStatus = async (e) => {
     e.preventDefault();
@@ -225,12 +205,6 @@ const SpecialistDashboard = () => {
           >
             History ({historyRequests.length})
           </button>
-          <button
-            onClick={() => setActiveTab('reviews')}
-            className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${activeTab === 'reviews' ? 'bg-white text-primary-700 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'}`}
-          >
-            My Reviews
-          </button>
         </div>
 
         {activeTab === 'pending' && (
@@ -371,58 +345,7 @@ const SpecialistDashboard = () => {
         </div>
       )}
 
-      {activeTab === 'reviews' && (
-        <div className="p-6">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6 flex items-center">
-            <div className="bg-amber-100 text-amber-600 p-4 rounded-full mr-4 flex items-center justify-center">
-              <Star size={32} className="fill-amber-500 text-amber-500" />
-            </div>
-            <div>
-              <p className="text-slate-500 font-medium">Average Rating</p>
-              <div className="flex items-end">
-                <h3 className="text-3xl font-bold text-slate-800 mr-2">{reviewsData.averageRating > 0 ? reviewsData.averageRating : 'N/A'}</h3>
-                <p className="text-slate-500 mb-1">({reviewsData.totalReviews} total reviews)</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex-1">
-            <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-              <h2 className="font-semibold text-slate-800 text-lg">Patient Feedback</h2>
-            </div>
-            
-            <div className="p-6">
-              {loadingReviews ? (
-                <div className="text-center text-slate-400 py-8">Loading reviews...</div>
-              ) : reviewsData.testimonials.length === 0 ? (
-                <div className="text-center text-slate-500 py-12">
-                  <Star size={40} className="mx-auto text-slate-300 mb-3" />
-                  <p>You have no reviews yet.</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {reviewsData.testimonials.map(review => (
-                    <div key={review.id} className="border border-slate-100 bg-slate-50 rounded-xl p-5">
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <div className="font-bold text-slate-800">{review.Patient?.name || 'Anonymous'}</div>
-                          <div className="text-xs text-slate-400 mt-0.5">{new Date(review.created_at).toLocaleDateString()}</div>
-                        </div>
-                        <div className="flex">
-                          {[1,2,3,4,5].map(star => (
-                            <Star key={star} size={14} className={star <= review.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-200'} />
-                          ))}
-                        </div>
-                      </div>
-                      {review.comment && <p className="text-sm text-slate-700 italic border-l-2 border-slate-300 pl-3 py-1">"{review.comment}"</p>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {activeTab === 'reviews' && null}
       </div>
 
       {/* Process Request Modal */}

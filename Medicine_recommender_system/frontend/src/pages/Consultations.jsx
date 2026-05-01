@@ -24,7 +24,13 @@ import {
   X,
   PhoneCall,
   Trash2,
-  MessageSquare
+  MessageSquare,
+  Star,
+  Mic,
+  Square,
+  Phone,
+  Pause,
+  Play
 } from 'lucide-react';
 import { JitsiMeeting } from '@jitsi/react-sdk';
 import { useTranslation } from 'react-i18next';
@@ -58,6 +64,15 @@ const Consultations = () => {
   const [isVideoActive, setIsVideoActive] = useState(false);
   const [incomingCall, setIncomingCall] = useState(null);
 
+  // Voice recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [isRecordingPaused, setIsRecordingPaused] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const recordingIntervalRef = useRef(null);
+  const cancelRecordingRef = useRef(false);
+
   // Payment form state
   const [globalConsultationFee, setGlobalConsultationFee] = useState('100');
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
@@ -88,6 +103,11 @@ const Consultations = () => {
   const [isPrescribing, setIsPrescribing] = useState(false);
   
   const [modalConfig, setModalConfig] = useState({ isOpen: false, reqId: null });
+  const [isMarkingCured, setIsMarkingCured] = useState(false);
+
+  // Consultation feedback state (patient submitting after consultation completed)
+  const [consultFeedback, setConsultFeedback] = useState({ isOpen: false, rating: 0, comment: '', submitting: false });
+  const [myTestimonials, setMyTestimonials] = useState([]);
 
   useEffect(() => {
     // Check if URL has ?action=new
@@ -126,13 +146,15 @@ const Consultations = () => {
   const fetchConsultations = async () => {
     try {
       setLoading(true);
-      const [consRes, servRes, settingsRes] = await Promise.all([
+      const [consRes, servRes, settingsRes, testRes] = await Promise.all([
         api.get('/consultations'),
         api.get('/services/items'),
-        api.get('/settings')
+        api.get('/settings'),
+        user.role === 'patient' ? api.get('/testimonials/my').catch(() => ({ data: [] })) : Promise.resolve({ data: [] })
       ]);
       setConsultations(consRes.data);
       setAvailableServices(servRes.data);
+      setMyTestimonials(testRes.data);
       
       const feeSetting = settingsRes.data.find(s => s.key === 'consultation_fee');
       if (feeSetting) {
@@ -252,6 +274,97 @@ const Consultations = () => {
   const handleEndVideoCall = () => {
     setIsVideoActive(false);
     socket.emit('end_video_call', { consultation_id: activeChatId });
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+      cancelRecordingRef.current = false;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(track => track.stop());
+        setIsRecording(false);
+        setIsRecordingPaused(false);
+        clearInterval(recordingIntervalRef.current);
+
+        if (cancelRecordingRef.current) {
+          // Recording was cancelled, discard the audio
+          audioChunksRef.current = [];
+          return;
+        }
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const audioFile = new File([audioBlob], `voice-message-${Date.now()}.webm`, { type: 'audio/webm' });
+        
+        const formData = new FormData();
+        formData.append('file', audioFile);
+
+        try {
+          const res = await api.post('/chat/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+
+          socket.emit('send_message', {
+            consultation_id: activeChatId,
+            sender_id: user.id,
+            message: 'Voice message',
+            attachment_url: res.data.fileUrl,
+            chat_type: activeChatType
+          });
+        } catch (err) {
+          console.error(err);
+          toast.error('Voice message upload failed.');
+        }
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setIsRecordingPaused(false);
+      setRecordingTime(0);
+      recordingIntervalRef.current = setInterval(() => setRecordingTime(prev => prev + 1), 1000);
+    } catch (err) {
+      console.error('Error accessing microphone:', err);
+      toast.error('Microphone access denied or not available.');
+    }
+  };
+
+  const pauseRecording = () => {
+    if (mediaRecorderRef.current && isRecording && !isRecordingPaused) {
+      mediaRecorderRef.current.pause();
+      setIsRecordingPaused(true);
+      clearInterval(recordingIntervalRef.current);
+    }
+  };
+
+  const resumeRecording = () => {
+    if (mediaRecorderRef.current && isRecording && isRecordingPaused) {
+      mediaRecorderRef.current.resume();
+      setIsRecordingPaused(false);
+      recordingIntervalRef.current = setInterval(() => setRecordingTime(prev => prev + 1), 1000);
+    }
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      cancelRecordingRef.current = true;
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  const sendRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      cancelRecordingRef.current = false;
+      mediaRecorderRef.current.stop();
+    }
   };
 
   const handleSendMessage = (e) => {
@@ -389,6 +502,39 @@ const Consultations = () => {
       api.get(`/service-requests/consultation/${activeChatId}`).then(res => setServiceReqs(res.data)); // refresh list
       toast.success("Request updated safely.");
     } catch (err) { console.error(err); toast.error("Failed to update request."); }
+  };
+
+  const handleMarkAsCured = async () => {
+    if (!activeChatId) return;
+    setIsMarkingCured(true);
+    try {
+      await api.put(`/treatments/${activeChatId}/mark-cured`);
+      toast.success('Patient marked as cured!');
+      fetchConsultations();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to mark as cured. Ensure a treatment plan exists first.');
+    } finally {
+      setIsMarkingCured(false);
+    }
+  };
+
+  const handleSubmitConsultFeedback = async () => {
+    if (consultFeedback.rating === 0) return toast.error('Please select a rating');
+    setConsultFeedback(prev => ({ ...prev, submitting: true }));
+    try {
+      await api.post('/testimonials', {
+        service_id: activeChatId,
+        service_type: 'consultation',
+        rating: consultFeedback.rating,
+        comment: consultFeedback.comment
+      });
+      toast.success('Feedback submitted!');
+      setConsultFeedback({ isOpen: false, rating: 0, comment: '', submitting: false });
+      fetchConsultations();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to submit feedback');
+      setConsultFeedback(prev => ({ ...prev, submitting: false }));
+    }
   };
 
   const confirmDelete = (reqId) => {
@@ -682,6 +828,20 @@ const Consultations = () => {
                     >
                       <Activity size={16} /> <span>Request Service</span>
                     </button>
+                    {activeConsultation.status !== 'completed' && (
+                      <button
+                        onClick={handleMarkAsCured}
+                        disabled={isMarkingCured}
+                        className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 text-white hover:bg-emerald-700 rounded-full font-bold text-xs transition shadow-sm disabled:opacity-60"
+                      >
+                        <CheckCircle size={16} /> <span>{isMarkingCured ? 'Saving...' : 'Mark as Cured'}</span>
+                      </button>
+                    )}
+                    {activeConsultation.status === 'completed' && (
+                      <span className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-bold text-xs">
+                        <CheckCircle size={14} /> <span>Cured</span>
+                      </span>
+                    )}
                   </>
                 )}
                 {(!activeConsultation.Payment || activeConsultation.Payment.status === 'verified') && (
@@ -817,7 +977,7 @@ const Consultations = () => {
                 {incomingCall && !isVideoActive && (
                   <div className="absolute top-0 left-0 w-full bg-emerald-600 text-white p-4 flex justify-between items-center shadow-md drop-shadow-lg z-50">
                     <div className="flex items-center">
-                      <div className="bg-white/20 p-2 rounded-full mr-3 animate-pulse"><PhoneCall size={24} /></div>
+                      <div className="bg-white/20 p-2 rounded-full mr-3 animate-pulse"><Video size={24} /></div>
                       <div>
                         <p className="font-bold text-lg">{incomingCall.initiator_name} {t('consultations.incomingCall')}</p>
                         <p className="text-emerald-100 text-sm">{t('consultations.joinFaceToFace')}</p>
@@ -941,6 +1101,25 @@ const Consultations = () => {
                         </div>
                       )}
 
+                      {/* Feedback prompt for completed consultations (patient only) */}
+                      {user.role === 'patient' && activeConsultation.status === 'completed' && (
+                        myTestimonials.find(t => t.service_id === activeChatId) ? (
+                          <div className="mx-auto bg-emerald-50 border border-emerald-200 rounded-lg p-3 max-w-md w-full text-center text-sm text-emerald-700 font-medium flex items-center justify-center gap-2">
+                            <Star size={14} className="fill-emerald-600 text-emerald-600" /> You have reviewed this consultation
+                          </div>
+                        ) : (
+                          <div className="mx-auto bg-amber-50 border border-amber-200 rounded-lg p-4 max-w-md w-full text-center">
+                            <p className="text-sm font-semibold text-amber-800 mb-2">Consultation completed — how was your experience?</p>
+                            <button
+                              onClick={() => setConsultFeedback({ isOpen: true, rating: 0, comment: '', submitting: false })}
+                              className="text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 px-4 py-1.5 rounded-lg shadow-sm transition flex items-center mx-auto"
+                            >
+                              <MessageSquare size={13} className="mr-1.5" /> Leave Feedback
+                            </button>
+                          </div>
+                        )
+                      )}
+
                       {/* Delete Toolbar */}
                       {selectedMessages.size > 0 && (
                         <div className="sticky top-0 bg-primary-100 border border-primary-200 p-3 rounded-lg flex justify-between items-center z-20 shadow-md">
@@ -993,8 +1172,15 @@ const Consultations = () => {
                               {msg.attachment_url && (
                                 (() => {
                                   const fullUrl = msg.attachment_url.startsWith('http') ? msg.attachment_url : `${SOCKET_URL}${msg.attachment_url}`;
+                                  const isAudio = fullUrl.match(/\.(webm|mp3|wav|ogg)$/i) != null;
+                                  
                                   return fullUrl.match(/\.(jpeg|jpg|gif|png)$/i) != null ? (
                                     <img src={fullUrl} alt="attachment" className="mt-2 rounded-lg max-w-full max-h-48 object-contain" />
+                                  ) : isAudio ? (
+                                    <audio controls className="mt-2 w-full max-w-[250px] h-10">
+                                      <source src={fullUrl} />
+                                      Your browser does not support the audio element.
+                                    </audio>
                                   ) : (
                                     <a href={fullUrl} target="_blank" rel="noopener noreferrer" className={`inline-block mt-2 px-3 py-1 rounded text-sm underline break-all ${isSentByMe ? 'bg-white/20' : 'bg-slate-100 text-primary-600'}`}>
                                       {t('consultations.viewAttachment')}
@@ -1035,29 +1221,78 @@ const Consultations = () => {
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={activeConsultation.status === 'completed'}
-                        className="text-slate-400 hover:text-slate-600 p-2 mr-2 transition disabled:opacity-50 disabled:hover:text-slate-400"
+                        className="text-slate-400 hover:text-slate-600 p-2 mr-1 transition disabled:opacity-50 disabled:hover:text-slate-400"
                       >
                         <Paperclip size={22} />
                       </button>
 
-                      <form onSubmit={handleSendMessage} className="flex-1 flex items-center relative">
-                        <input
-                          type="text"
-                          autoComplete="off"
-                          value={newMessage}
-                          onChange={(e) => setNewMessage(e.target.value)}
-                          placeholder={activeConsultation.status === 'completed' ? t('consultations.chatClosed') : t('consultations.typeMessage')}
-                          disabled={activeConsultation.status === 'completed'}
-                          className="w-full bg-slate-100 rounded-full pl-5 pr-14 py-3 border-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
-                        />
-                        <button
-                          type="submit"
-                          disabled={!newMessage.trim() || activeConsultation.status === 'completed'}
-                          className="absolute right-2 top-1.5 p-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-full transition disabled:opacity-50 disabled:hover:bg-primary-600 flex items-center justify-center h-9 w-9"
-                        >
-                          <Send size={16} className="ml-0.5" />
-                        </button>
-                      </form>
+                      {isRecording ? (
+                        <div className="flex-1 flex items-center justify-between bg-rose-50 border border-rose-200 rounded-full px-4 py-2">
+                          <div className="flex items-center text-rose-600 font-bold w-20">
+                            <div className={`w-2 h-2 rounded-full bg-rose-600 mr-2 ${!isRecordingPaused ? 'animate-pulse' : 'opacity-50'}`}></div>
+                            {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+                          </div>
+                          
+                          <div className="flex space-x-2">
+                            <button
+                              type="button"
+                              onClick={cancelRecording}
+                              className="text-slate-500 hover:text-rose-600 bg-white hover:bg-rose-100 p-1.5 rounded-full transition flex items-center justify-center h-8 w-8 shadow-sm border border-slate-200"
+                              title="Cancel Recording"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                            
+                            <button
+                              type="button"
+                              onClick={isRecordingPaused ? resumeRecording : pauseRecording}
+                              className="text-slate-500 hover:text-amber-600 bg-white hover:bg-amber-100 p-1.5 rounded-full transition flex items-center justify-center h-8 w-8 shadow-sm border border-slate-200"
+                              title={isRecordingPaused ? "Resume Recording" : "Pause Recording"}
+                            >
+                              {isRecordingPaused ? <Play size={16} fill="currentColor" /> : <Pause size={16} fill="currentColor" />}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={sendRecording}
+                              className="bg-primary-600 hover:bg-primary-700 text-white p-1.5 rounded-full transition flex items-center justify-center h-8 w-8 shadow-sm"
+                              title="Send Voice Message"
+                            >
+                              <Send size={14} className="ml-0.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={startRecording}
+                            disabled={activeConsultation.status === 'completed'}
+                            className="text-slate-400 hover:text-blue-600 p-2 mr-2 transition disabled:opacity-50 disabled:hover:text-slate-400"
+                          >
+                            <Mic size={22} />
+                          </button>
+                          
+                          <form onSubmit={handleSendMessage} className="flex-1 flex items-center relative">
+                            <input
+                              type="text"
+                              autoComplete="off"
+                              value={newMessage}
+                              onChange={(e) => setNewMessage(e.target.value)}
+                              placeholder={activeConsultation.status === 'completed' ? t('consultations.chatClosed') : t('consultations.typeMessage')}
+                              disabled={activeConsultation.status === 'completed'}
+                              className="w-full bg-slate-100 rounded-full pl-5 pr-14 py-3 border-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+                            />
+                            <button
+                              type="submit"
+                              disabled={!newMessage.trim() || activeConsultation.status === 'completed'}
+                              className="absolute right-2 top-1.5 p-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-full transition disabled:opacity-50 disabled:hover:bg-primary-600 flex items-center justify-center h-9 w-9"
+                            >
+                              <Send size={16} className="ml-0.5" />
+                            </button>
+                          </form>
+                        </>
+                      )}
                     </div>
                   </>
                 )}
@@ -1263,6 +1498,50 @@ const Consultations = () => {
         confirmText="Delete"
         isDanger={true}
       />
+
+      {/* Consultation Feedback Modal */}
+      {consultFeedback.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex justify-center items-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md">
+            <h3 className="text-xl font-bold text-slate-800 mb-1">Rate Your Consultation</h3>
+            <p className="text-sm text-slate-500 mb-6">
+              How was your experience with Dr. {activeConsultation?.Doctor?.name || 'your doctor'}?
+            </p>
+            <div className="flex justify-center space-x-2 mb-6">
+              {[1, 2, 3, 4, 5].map(star => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setConsultFeedback(prev => ({ ...prev, rating: star }))}
+                  className="focus:outline-none transition-transform hover:scale-110"
+                >
+                  <Star size={36} className={consultFeedback.rating >= star ? 'fill-amber-400 text-amber-400' : 'text-slate-300'} />
+                </button>
+              ))}
+            </div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Comment (Optional)</label>
+            <textarea
+              value={consultFeedback.comment}
+              onChange={e => setConsultFeedback(prev => ({ ...prev, comment: e.target.value }))}
+              className="w-full border border-slate-300 rounded-lg p-3 mb-6 min-h-[90px] resize-none focus:ring-2 focus:ring-primary-500 outline-none"
+              placeholder="Share details of your experience..."
+            />
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setConsultFeedback({ isOpen: false, rating: 0, comment: '', submitting: false })}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 font-medium rounded-lg transition"
+              >Cancel</button>
+              <button
+                onClick={handleSubmitConsultFeedback}
+                disabled={consultFeedback.submitting || consultFeedback.rating === 0}
+                className="px-6 py-2 bg-primary-600 text-white font-bold rounded-lg hover:bg-primary-700 disabled:opacity-50 transition"
+              >
+                {consultFeedback.submitting ? 'Submitting...' : 'Submit Feedback'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

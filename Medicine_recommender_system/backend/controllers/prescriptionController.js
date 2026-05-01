@@ -63,3 +63,22 @@ exports.getPrescriptionsByPatient = async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch prescriptions' });
   }
 };
+
+exports.getPrescriptionsByDoctor = async (req, res) => {
+  try {
+    const doctor_id = req.user.id;
+    const prescriptions = await Prescription.findAll({
+      where: { doctor_id },
+      include: [
+        { model: Drug },
+        { model: Consultation, attributes: ['id', 'reason', 'status', 'created_at'] },
+        { model: User, as: 'Patient', attributes: ['id', 'name', 'email'] }
+      ],
+      order: [['created_at', 'DESC']]
+    });
+    res.status(200).json(prescriptions);
+  } catch (err) {
+    console.error('Error fetching doctor prescriptions:', err);
+    res.status(500).json({ message: 'Failed to fetch prescriptions' });
+  }
+};

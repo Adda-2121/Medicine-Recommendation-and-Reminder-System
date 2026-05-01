@@ -60,3 +60,48 @@ exports.getTreatmentPlan = async (req, res) => {
     res.status(500).json({ message: 'Server error fetching treatment plan' });
   }
 };
+
+// @desc    Mark a patient as cured (doctor only)
+// @route   PUT /api/treatments/:consultationId/mark-cured
+// @access  Private (Doctor)
+exports.markAsCured = async (req, res) => {
+  try {
+    if (req.user.role !== 'doctor') {
+      return res.status(403).json({ message: 'Only doctors can mark patients as cured' });
+    }
+
+    const plan = await TreatmentPlan.findOne({
+      where: { consultation_id: req.params.consultationId },
+      include: [{ model: Consultation, foreignKey: 'consultation_id' }]
+    });
+
+    if (!plan) {
+      return res.status(404).json({ message: 'Treatment plan not found' });
+    }
+
+    // Verify the doctor owns this consultation
+    const consultation = await Consultation.findByPk(req.params.consultationId);
+    if (!consultation || consultation.doctor_id !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized for this consultation' });
+    }
+
+    plan.is_cured = true;
+    plan.cured_at = new Date();
+    await plan.save();
+
+    // Mark consultation as completed if not already
+    if (consultation.status !== 'completed') {
+      consultation.status = 'completed';
+      consultation.queue_status = 'completed';
+      await consultation.save();
+    }
+
+    res.status(200).json({
+      message: 'Patient marked as cured successfully',
+      plan
+    });
+  } catch (error) {
+    console.error('Mark as cured error:', error);
+    res.status(500).json({ message: 'Server error marking patient as cured' });
+  }
+};
