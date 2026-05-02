@@ -13,7 +13,13 @@ import {
   Plus,
   Trash2,
   Star,
-  ClipboardList
+  ClipboardList,
+  Activity,
+  AlertTriangle,
+  XCircle,
+  ShieldCheck,
+  WifiOff,
+  Loader2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ConfirmationModal from '../components/common/ConfirmationModal';
@@ -38,12 +44,31 @@ const DoctorDashboard = () => {
   const [loadingReviews, setLoadingReviews] = useState(false);
 
   const [modalConfig, setModalConfig] = useState({ isOpen: false, slotId: null });
+  const [currentStatus, setCurrentStatus] = useState('offline');
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
+
+  // Status-change confirmation modal
+  const [statusModal, setStatusModal] = useState({ isOpen: false, targetStatus: null, pendingCount: 0 });
+  const [statusChanging, setStatusChanging] = useState(false);
+
+
 
   useEffect(() => {
     fetchConsultations();
     fetchAvailabilities();
     fetchReviews();
+    fetchStatus();
   }, []);
+
+  const fetchStatus = async () => {
+    try {
+      const res = await api.get('/users/availability');
+      setCurrentStatus(res.data.availability_status || 'offline');
+    } catch (err) {
+      console.error('Failed to fetch status', err);
+    }
+  };
+
 
   const fetchReviews = async () => {
     try {
@@ -82,6 +107,31 @@ const DoctorDashboard = () => {
     }
   };
 
+  
+  const handleStatusChange = async (newStatus) => {
+    setIsStatusDropdownOpen(false);
+    const pendingCount = consultations.filter(c => c.status === 'assigned').length;
+    if ((newStatus === 'offline' || newStatus === 'busy') && pendingCount > 0) {
+      setStatusModal({ isOpen: true, targetStatus: newStatus, pendingCount });
+      return;
+    }
+    await applyStatusChange(newStatus);
+  };
+
+  const applyStatusChange = async (newStatus) => {
+    setStatusChanging(true);
+    try {
+      const res = await api.put('/users/availability', { status: newStatus });
+      setCurrentStatus(res.data.availability_status);
+      toast.success(`Status updated to ${newStatus}`);
+      fetchConsultations();
+    } catch (err) {
+      toast.error('Failed to update status');
+    } finally {
+      setStatusChanging(false);
+    }
+  };
+
   const handleAddSlot = async (e) => {
     e.preventDefault();
     if (!newSlot.date || !newSlot.start_time || !newSlot.end_time) return;
@@ -101,6 +151,18 @@ const DoctorDashboard = () => {
 
   const confirmDelete = (id) => {
     setModalConfig({ isOpen: true, slotId: id });
+  };
+
+  
+  const handleResumeConsultation = async (id) => {
+    try {
+      await api.put(`/consultations/${id}/resume`);
+      toast.success('Case resumed! You can now continue the consultation.');
+      fetchConsultations();
+      navigate(`/consultations?id=${id}`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to resume consultation');
+    }
   };
 
   const handleCompleteConsultation = async (id) => {
@@ -124,29 +186,71 @@ const DoctorDashboard = () => {
     }
   };
 
-  const stats = {
+    const stats = {
     pending: consultations.filter(c => c.status === 'assigned').length,
     activeChats: consultations.filter(c => c.status === 'in_progress').length,
-    todayFollowUps: 0,
+    pendingResults: consultations.filter(c => c.status === 'waiting_for_results').length,
+    resultsReady: consultations.filter(c => c.status === 'result_ready').length,
     completed: consultations.filter(c => c.status === 'completed').length,
   };
 
   const summaryCards = [
-    { title: 'Pending Consultations', value: stats.pending, icon: Users, color: 'text-amber-600', bg: 'bg-amber-100' },
+    { title: 'Pending Patients', value: stats.pending, icon: Users, color: 'text-amber-600', bg: 'bg-amber-100' },
     { title: 'Active Chats', value: stats.activeChats, icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-100' },
-    { title: 'Today\'s Follow-ups', value: stats.todayFollowUps, icon: Clock, color: 'text-emerald-600', bg: 'bg-emerald-100' },
-    { title: 'Completed Cases', value: stats.completed, icon: CheckCircle, color: 'text-purple-600', bg: 'bg-purple-100' },
+    { title: 'Pending Results', value: stats.pendingResults, icon: Clock, color: 'text-slate-600', bg: 'bg-slate-100' },
+    { title: 'Results Ready', value: stats.resultsReady, icon: Activity, color: 'text-emerald-600', bg: 'bg-emerald-100' },
   ];
 
   return (
     <div className="flex flex-col h-full">
       {/* Top Header */}
-      <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-200">
+      <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-200">
         <div>
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Dr. {user?.name || 'Doctor'}</h1>
           <p className="text-slate-500 mt-1 text-sm md:text-base">Your clinical overview and active cases.</p>
         </div>
+
         <div className="flex items-center space-x-4">
+          {/* Professional Status Dropdown */}
+          <div className="relative">
+            <button 
+              onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+              className="flex items-center space-x-2 bg-white px-3 py-1.5 rounded-full border border-slate-200 shadow-sm hover:bg-slate-50 transition"
+            >
+              <span className={`w-2.5 h-2.5 rounded-full ${currentStatus === 'available' ? 'bg-emerald-500' : currentStatus === 'busy' ? 'bg-amber-500' : 'bg-slate-400'}`}></span>
+              <span className="text-sm font-medium text-slate-700 capitalize">{currentStatus}</span>
+              <svg className={`w-4 h-4 text-slate-400 transition-transform ${isStatusDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+            </button>
+            
+            {isStatusDropdownOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-100 overflow-hidden z-50">
+                <div className="p-1">
+                  <button 
+                    onClick={() => handleStatusChange('available')}
+                    className={`w-full text-left px-3 py-2 text-sm rounded-lg flex items-center space-x-2 transition-colors ${currentStatus === 'available' ? 'bg-slate-50 font-semibold' : 'hover:bg-slate-50'}`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span className="text-slate-700">Available</span>
+                  </button>
+                  <button 
+                    onClick={() => handleStatusChange('busy')}
+                    className={`w-full text-left px-3 py-2 text-sm rounded-lg flex items-center space-x-2 transition-colors ${currentStatus === 'busy' ? 'bg-slate-50 font-semibold' : 'hover:bg-slate-50'}`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                    <span className="text-slate-700">Busy</span>
+                  </button>
+                  <button 
+                    onClick={() => handleStatusChange('offline')}
+                    className={`w-full text-left px-3 py-2 text-sm rounded-lg flex items-center space-x-2 transition-colors ${currentStatus === 'offline' ? 'bg-slate-50 font-semibold' : 'hover:bg-slate-50'}`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                    <span className="text-slate-700">Offline</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <button className="p-2 text-slate-400 hover:text-primary-600 bg-white rounded-full border border-slate-200 shadow-sm relative transition-colors">
             <Bell size={20} />
           </button>
@@ -157,6 +261,65 @@ const DoctorDashboard = () => {
         </div>
       </div>
 
+      {/* Verification Status Banner */}
+      {user?.verification_status === 'pending' && (
+        <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+          <div className="bg-amber-100 p-2 rounded-full shrink-0">
+            <Clock size={18} className="text-amber-600" />
+          </div>
+          <div>
+            <p className="font-semibold text-amber-800 text-sm">Account Pending Verification</p>
+            <p className="text-amber-700 text-xs mt-0.5">
+              Your credentials are under review by our admin team. You'll receive an email once your account is approved. Some features may be limited until verification is complete.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {user?.verification_status === 'rejected' && (
+        <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+          <div className="bg-red-100 p-2 rounded-full shrink-0">
+            <XCircle size={18} className="text-red-600" />
+          </div>
+          <div>
+            <p className="font-semibold text-red-800 text-sm">Application Rejected</p>
+            <p className="text-red-700 text-xs mt-0.5">
+              Your application was not approved.
+              {user?.rejection_reason && <> Reason: <strong>{user.rejection_reason}</strong>.</>}
+              {' '}Please contact support or re-register with updated documents.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {user?.verification_status === 'suspended' && (
+        <div className="mb-4 bg-slate-100 border border-slate-300 rounded-xl p-4 flex items-start gap-3">
+          <div className="bg-slate-200 p-2 rounded-full shrink-0">
+            <AlertTriangle size={18} className="text-slate-600" />
+          </div>
+          <div>
+            <p className="font-semibold text-slate-800 text-sm">Account Suspended</p>
+            <p className="text-slate-600 text-xs mt-0.5">
+              Your account has been suspended.
+              {user?.rejection_reason && <> Reason: <strong>{user.rejection_reason}</strong>.</>}
+              {' '}Please contact support for assistance.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {user?.verification_status === 'verified' && user?.is_verified && (
+        <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
+          <div className="bg-emerald-100 p-2 rounded-full shrink-0">
+            <ShieldCheck size={18} className="text-emerald-600" />
+          </div>
+          <div>
+            <p className="font-semibold text-emerald-800 text-sm">Verified Professional</p>
+            <p className="text-emerald-700 text-xs mt-0.5">Your credentials have been verified. You can now accept patient consultations.</p>
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex space-x-1 mb-6 border-b border-slate-200 pb-0 shrink-0">
         <button 
@@ -165,12 +328,7 @@ const DoctorDashboard = () => {
         >
           Overview & Patients
         </button>
-        <button 
-          onClick={() => setActiveTab('availability')}
-          className={`py-3 px-6 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'availability' ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
-        >
-          My Availability Schedule
-        </button>
+        
         <button 
           onClick={() => setActiveTab('history')}
           className={`py-3 px-6 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'history' ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
@@ -262,13 +420,23 @@ const DoctorDashboard = () => {
                               <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full capitalize
                                 ${c.status === 'completed' ? 'bg-green-100 text-green-800' : 
                                   c.status === 'in_progress' ? 'bg-blue-100 text-blue-800' : 
+                                  c.status === 'result_ready' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 animate-pulse' :
+                                  c.status === 'waiting_for_results' ? 'bg-slate-100 text-slate-800' :
                                   'bg-amber-100 text-amber-800'}`}>
-                                {c.status === 'completed' ? 'Completed' : (c.status === 'in_progress' ? 'Pending' : c.status.replace('_', ' '))}
+                                {c.status === 'completed' ? 'Completed' : (c.status === 'in_progress' ? 'Active' : c.status.replace(/_/g, ' '))}
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                              <div className="flex items-center justify-end gap-2">
-                                {c.status !== 'completed' && (
+                                                            <div className="flex items-center justify-end gap-2">
+                                {c.status === 'result_ready' && (
+                                  <button
+                                    onClick={() => handleResumeConsultation(c.id)}
+                                    className="bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded-md transition-all shadow-sm text-xs font-bold flex items-center"
+                                  >
+                                    <Activity size={13} className="mr-1" /> Resume Case
+                                  </button>
+                                )}
+                                {c.status === 'in_progress' && (
                                   <button
                                     onClick={() => handleCompleteConsultation(c.id)}
                                     className="bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 px-3 py-1.5 rounded-md transition-all shadow-sm text-xs font-bold flex items-center"
@@ -276,12 +444,17 @@ const DoctorDashboard = () => {
                                     <CheckCircle size={13} className="mr-1" /> Complete
                                   </button>
                                 )}
-                                <button 
-                                  onClick={() => navigate(`/consultations?id=${c.id}`)}
-                                  className="bg-white border border-slate-200 text-primary-600 hover:bg-primary-50 hover:border-primary-200 px-3 py-1.5 rounded-md transition-all shadow-sm text-xs font-bold flex items-center"
-                                >
-                                  <MessageSquare size={13} className="mr-1" /> Chat
-                                </button>
+                                {(c.status === 'in_progress' || c.status === 'assigned') && (
+                                  <button 
+                                    onClick={() => navigate(`/consultations?id=${c.id}`)}
+                                    className="bg-white border border-slate-200 text-primary-600 hover:bg-primary-50 hover:border-primary-200 px-3 py-1.5 rounded-md transition-all shadow-sm text-xs font-bold flex items-center"
+                                  >
+                                    <MessageSquare size={13} className="mr-1" /> Chat
+                                  </button>
+                                )}
+                                {c.status === 'waiting_for_results' && (
+                                   <span className="text-xs text-slate-500 font-medium">Waiting on Lab...</span>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -509,6 +682,68 @@ const DoctorDashboard = () => {
         confirmText="Delete"
         isDanger={true}
       />
+
+      {/* Status-change confirmation modal */}
+      {statusModal.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-sm bg-slate-900/60">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-fadeIn" role="dialog" aria-modal="true">
+            {/* Header */}
+            <div className="px-6 pt-6 pb-4 flex items-start gap-4">
+              <div className={`shrink-0 flex items-center justify-center h-10 w-10 rounded-full ${statusModal.targetStatus === 'offline' ? 'bg-slate-100' : 'bg-amber-100'}`}>
+                {statusModal.targetStatus === 'offline'
+                  ? <WifiOff size={20} className="text-slate-500" />
+                  : <Clock size={20} className="text-amber-600" />
+                }
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-slate-900 capitalize">
+                  Set status to "{statusModal.targetStatus}"?
+                </h3>
+                <p className="mt-1 text-sm text-slate-500 leading-relaxed">
+                  You currently have{' '}
+                  <span className="font-semibold text-slate-700">{statusModal.pendingCount} pending patient{statusModal.pendingCount !== 1 ? 's' : ''}</span>{' '}
+                  waiting to be seen. Switching to{' '}
+                  <span className="font-semibold capitalize">{statusModal.targetStatus}</span>{' '}
+                  will reassign {statusModal.pendingCount !== 1 ? 'them' : 'this patient'} to another available doctor.
+                </p>
+              </div>
+            </div>
+
+            {/* Warning box */}
+            <div className="mx-6 mb-4 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-2">
+              <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-700 leading-relaxed">
+                This action affects active patients. Make sure you have handed off any ongoing consultations before going {statusModal.targetStatus}.
+              </p>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-row-reverse gap-3">
+              <button
+                type="button"
+                disabled={statusChanging}
+                onClick={async () => {
+                  const t = statusModal.targetStatus;
+                  setStatusModal({ isOpen: false, targetStatus: null, pendingCount: 0 });
+                  await applyStatusChange(t);
+                }}
+                className={`px-5 py-2 rounded-lg text-sm font-bold text-white transition shadow-sm flex items-center gap-2 disabled:opacity-70
+                  ${statusModal.targetStatus === 'offline' ? 'bg-slate-600 hover:bg-slate-700' : 'bg-amber-500 hover:bg-amber-600'}`}
+              >
+                {statusChanging && <Loader2 size={14} className="animate-spin" />}
+                Yes, set {statusModal.targetStatus}
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusModal({ isOpen: false, targetStatus: null, pendingCount: 0 })}
+                className="px-5 py-2 rounded-lg text-sm font-medium text-slate-700 border border-slate-300 bg-white hover:bg-slate-50 transition"
+              >
+                Keep current status
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

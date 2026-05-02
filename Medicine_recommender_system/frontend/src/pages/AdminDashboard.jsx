@@ -4,6 +4,8 @@ import { Users, Activity, FileText, PieChart, ShieldPlus, Calendar, Stethoscope,
 import toast from 'react-hot-toast';
 
 import ConfirmationModal from '../components/common/ConfirmationModal';
+import RowMenu from '../components/common/RowMenu';
+import ReasonModal from '../components/common/ReasonModal';
 
 // Sub-components for tabs
 const OverviewTab = ({ stats }) => (
@@ -91,8 +93,17 @@ const DoctorsTab = () => {
   });
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   
   const [modalConfig, setModalConfig] = useState({ isOpen: false, doctorId: null });
+
+  // Edit state
+  const [editDoctor, setEditDoctor] = useState(null); // doctor being edited
+  const [editForm, setEditForm] = useState({ name: '', email: '', specialty: '', license_number: '', experience_years: '', current_workplace: '' });
+  const [editLoading, setEditLoading] = useState(false);
+
+  // Reason modal state (reject / suspend)
+  const [reasonModal, setReasonModal] = useState({ isOpen: false, action: null }); // action: 'rejected' | 'suspended'
 
   const fetchDoctors = async () => {
     try {
@@ -142,15 +153,43 @@ const DoctorsTab = () => {
     }
   };
 
-  const handleVerify = async (id, currentStatus) => {
+  const handleVerify = async (id, status, reason = null) => {
     try {
-      await api.put(`/users/${id}/verify`, { is_verified: !currentStatus });
+      await api.put(`/users/${id}/verify`, { status, rejection_reason: reason });
       fetchDoctors();
       if (selectedDoctor && selectedDoctor.id === id) {
-        setSelectedDoctor({ ...selectedDoctor, is_verified: !currentStatus });
+        setSelectedDoctor({ ...selectedDoctor, verification_status: status, is_verified: status === 'verified', rejection_reason: reason });
       }
+      toast.success(`Doctor marked as ${status}`);
     } catch (err) {
       toast.error('Failed to update verification status');
+    }
+  };
+
+  const openEdit = (doctor) => {
+    setEditDoctor(doctor);
+    setEditForm({
+      name: doctor.name || '',
+      email: doctor.email || '',
+      specialty: doctor.specialty || '',
+      license_number: doctor.license_number || '',
+      experience_years: doctor.experience_years || '',
+      current_workplace: doctor.current_workplace || '',
+    });
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    setEditLoading(true);
+    try {
+      await api.put(`/users/${editDoctor.id}`, editForm);
+      toast.success('Doctor updated successfully');
+      setEditDoctor(null);
+      fetchDoctors();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update doctor');
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -167,6 +206,32 @@ const DoctorsTab = () => {
         >
           {showForm ? 'Cancel' : '+ Register Doctor'}
         </button>
+      </div>
+
+      {/* Status Filter Tabs */}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {[
+          { key: 'all', label: 'All Doctors' },
+          { key: 'pending', label: 'Pending Review', color: 'amber' },
+          { key: 'verified', label: 'Verified', color: 'emerald' },
+          { key: 'rejected', label: 'Rejected', color: 'red' },
+          { key: 'suspended', label: 'Suspended', color: 'slate' },
+        ].map(({ key, label, color }) => {
+          const count = key === 'all' ? doctors.length : doctors.filter(d => (d.verification_status || 'pending') === key).length;
+          const isActive = statusFilter === key;
+          const colorMap = {
+            amber: isActive ? 'bg-amber-600 text-white border-amber-600' : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100',
+            emerald: isActive ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100',
+            red: isActive ? 'bg-red-600 text-white border-red-600' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100',
+            slate: isActive ? 'bg-slate-600 text-white border-slate-600' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100',
+          };
+          const cls = color ? colorMap[color] : (isActive ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50');
+          return (
+            <button key={key} onClick={() => setStatusFilter(key)} className={`px-3 py-1.5 rounded-full border text-xs font-semibold transition ${cls}`}>
+              {label} <span className="ml-1 opacity-75">({count})</span>
+            </button>
+          );
+        })}
       </div>
 
       {showForm && (
@@ -260,7 +325,9 @@ const DoctorsTab = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
-              {doctors.map((doctor) => (
+              {doctors
+                .filter(d => statusFilter === 'all' || (d.verification_status || 'pending') === statusFilter)
+                .map((doctor) => (
                 <tr key={doctor.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
@@ -284,11 +351,13 @@ const DoctorsTab = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-center">
                     <span className={`px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full border
-                      ${doctor.is_verified
+                      ${doctor.verification_status === 'verified'
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : doctor.verification_status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200'
+                        : doctor.verification_status === 'suspended' ? 'bg-slate-50 text-slate-700 border-slate-300'
                         : 'bg-amber-50 text-amber-700 border-amber-200'}`}
                     >
-                      {doctor.is_verified ? 'Verified Professional' : 'Pending Verification'}
+                      {doctor.verification_status ? doctor.verification_status.charAt(0).toUpperCase() + doctor.verification_status.slice(1) : 'Pending'}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -298,7 +367,11 @@ const DoctorsTab = () => {
                     >
                       Review Details
                     </button>
-                    <button className="text-red-500 hover:text-red-700 font-medium" onClick={() => confirmDelete(doctor.id)}>Remove</button>
+                    <RowMenu
+                      onEdit={() => openEdit(doctor)}
+                      onDelete={() => confirmDelete(doctor.id)}
+                      deleteLabel="Remove"
+                    />
                   </td>
                 </tr>
               ))}
@@ -318,7 +391,7 @@ const DoctorsTab = () => {
       {/* Review Modal */}
       {selectedDoctor && (
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto flex flex-col">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto flex flex-col">
             <div className="p-6 border-b border-slate-200 flex justify-between items-center sticky top-0 bg-white z-10">
               <h3 className="text-2xl font-bold text-slate-800 flex items-center">
                 <ShieldPlus className="mr-2 text-primary-600" /> Verify Credentials: Dr. {selectedDoctor.name}
@@ -336,6 +409,16 @@ const DoctorsTab = () => {
                       <li className="flex justify-between"><span className="text-slate-500">Email:</span> <span className="font-medium text-slate-800">{selectedDoctor.email}</span></li>
                       <li className="flex justify-between"><span className="text-slate-500">Specialty:</span> <span className="font-medium text-slate-800">{selectedDoctor.specialty || 'General'}</span></li>
                       <li className="flex justify-between"><span className="text-slate-500">Experience:</span> <span className="font-medium text-slate-800">{selectedDoctor.experience_years} Years</span></li>
+                      <li className="flex justify-between"><span className="text-slate-500">Workplace:</span> <span className="font-medium text-slate-800">{selectedDoctor.current_workplace || 'N/A'}</span></li>
+                    </ul>
+                  </div>
+                  
+                  <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
+                    <h4 className="font-semibold text-slate-700 uppercase tracking-wider text-xs mb-3 border-b pb-2">Education Verification</h4>
+                    <ul className="space-y-3">
+                      <li className="flex justify-between"><span className="text-slate-500">Degree:</span> <span className="font-medium text-slate-800">{selectedDoctor.degree || 'N/A'}</span></li>
+                      <li className="flex justify-between"><span className="text-slate-500">University:</span> <span className="font-medium text-slate-800">{selectedDoctor.university_name || 'N/A'}</span></li>
+                      <li className="flex justify-between"><span className="text-slate-500">Graduation Year:</span> <span className="font-medium text-slate-800">{selectedDoctor.graduation_year || 'N/A'}</span></li>
                     </ul>
                   </div>
 
@@ -354,54 +437,226 @@ const DoctorsTab = () => {
 
                   <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm text-center">
                     <h4 className="font-semibold text-slate-700 uppercase tracking-wider text-xs mb-3 border-b pb-2">Status</h4>
-                    <div className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-bold border ${selectedDoctor.is_verified ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
-                      {selectedDoctor.is_verified ? '✓ Verified Professional' : '⚠ Pending Verification'}
+                    <div className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-bold border 
+                      ${selectedDoctor.verification_status === 'verified' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                      : selectedDoctor.verification_status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200'
+                      : selectedDoctor.verification_status === 'suspended' ? 'bg-slate-50 text-slate-700 border-slate-300'
+                      : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                      {selectedDoctor.verification_status === 'verified' ? '✓ Verified Professional' 
+                      : selectedDoctor.verification_status === 'rejected' ? '✕ Application Rejected'
+                      : selectedDoctor.verification_status === 'suspended' ? '⚠ Account Suspended'
+                      : '⚠ Pending Verification'}
                     </div>
+                    {selectedDoctor.rejection_reason && (
+                        <p className="mt-3 text-red-600 text-xs italic border border-red-200 bg-red-50 p-2 rounded text-left">
+                            <strong>Reason:</strong> {selectedDoctor.rejection_reason}
+                        </p>
+                    )}
                   </div>
                 </div>
 
                 {/* Documents Section */}
                 <div className="space-y-6">
-                  <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
-                    <h4 className="font-semibold text-slate-700 uppercase tracking-wider text-xs mb-3 border-b pb-2">Live Identity Selfie</h4>
-                    <div className="aspect-video bg-slate-100 rounded-md border border-slate-200 flex items-center justify-center overflow-hidden">
-                      {selectedDoctor.selfie_document ? (
-                        <img src={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}/${selectedDoctor.selfie_document.replace(/\\/g, '/')}`} alt="Doctor Selfie" className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-slate-400 italic">No selfie captured</span>
-                      )}
-                    </div>
+                  <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
+                        <h4 className="font-semibold text-slate-700 uppercase tracking-wider text-xs mb-3 border-b pb-2">Live Selfie</h4>
+                        <div className="aspect-square bg-slate-100 rounded-md border border-slate-200 flex items-center justify-center overflow-hidden">
+                          {selectedDoctor.selfie_document ? (
+                            <img src={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}/${selectedDoctor.selfie_document.replace(/\\/g, '/')}`} alt="Doctor Selfie" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-slate-400 italic">No selfie</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
+                        <h4 className="font-semibold text-slate-700 uppercase tracking-wider text-xs mb-3 border-b pb-2">National ID</h4>
+                        <div className="aspect-square bg-slate-100 rounded-md border border-slate-200 flex items-center justify-center overflow-hidden relative">
+                          {selectedDoctor.id_document ? (
+                            selectedDoctor.id_document.endsWith('.pdf') ? (
+                              <div className="flex flex-col items-center justify-center space-y-3 h-full">
+                                <FileText size={32} className="text-red-400" />
+                                <a href={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}/${selectedDoctor.id_document.replace(/\\/g, '/')}`} target="_blank" rel="noreferrer" className="text-primary-600 text-xs hover:underline bg-primary-50 px-3 py-1 rounded-full border border-primary-100">Open PDF</a>
+                              </div>
+                            ) : (
+                              <a href={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}/${selectedDoctor.id_document.replace(/\\/g, '/')}`} target="_blank" rel="noreferrer" className="w-full h-full">
+                                <img src={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}/${selectedDoctor.id_document.replace(/\\/g, '/')}`} alt="ID Document" className="w-full h-full object-contain" />
+                              </a>
+                            )
+                          ) : (
+                            <span className="text-slate-400 italic">No ID uploaded</span>
+                          )}
+                        </div>
+                      </div>
                   </div>
 
                   <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
                     <h4 className="font-semibold text-slate-700 uppercase tracking-wider text-xs mb-3 border-b pb-2">Medical License Document</h4>
-                    <div className="h-64 bg-slate-100 rounded-md border border-slate-200 flex items-center justify-center overflow-hidden">
+                    <div className="h-48 bg-slate-100 rounded-md border border-slate-200 flex items-center justify-center overflow-hidden relative">
                       {selectedDoctor.verification_document ? (
                         selectedDoctor.verification_document.endsWith('.pdf') ? (
-                          <div className="flex flex-col items-center justify-center space-y-3">
+                          <div className="flex flex-col items-center justify-center space-y-3 h-full">
                             <FileText size={48} className="text-red-400" />
                             <a href={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}/${selectedDoctor.verification_document.replace(/\\/g, '/')}`} target="_blank" rel="noreferrer" className="text-primary-600 font-semibold hover:underline bg-primary-50 px-4 py-2 rounded-full border border-primary-100">Open PDF Document</a>
                           </div>
                         ) : (
-                          <img src={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}/${selectedDoctor.verification_document.replace(/\\/g, '/')}`} alt="License Document" className="w-full h-full object-contain" />
+                          <a href={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}/${selectedDoctor.verification_document.replace(/\\/g, '/')}`} target="_blank" rel="noreferrer" className="w-full h-full">
+                              <img src={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}/${selectedDoctor.verification_document.replace(/\\/g, '/')}`} alt="License Document" className="w-full h-full object-contain" />
+                          </a>
                         )
                       ) : (
                         <span className="text-slate-400 italic">No document uploaded</span>
                       )}
                     </div>
                   </div>
+
+                  <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
+                    <h4 className="font-semibold text-slate-700 uppercase tracking-wider text-xs mb-3 border-b pb-2">Degree Document</h4>
+                    <div className="h-48 bg-slate-100 rounded-md border border-slate-200 flex items-center justify-center overflow-hidden relative">
+                      {selectedDoctor.degree_document ? (
+                        selectedDoctor.degree_document.endsWith('.pdf') ? (
+                          <div className="flex flex-col items-center justify-center space-y-3 h-full">
+                            <FileText size={48} className="text-red-400" />
+                            <a href={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}/${selectedDoctor.degree_document.replace(/\\/g, '/')}`} target="_blank" rel="noreferrer" className="text-primary-600 font-semibold hover:underline bg-primary-50 px-4 py-2 rounded-full border border-primary-100">Open PDF Document</a>
+                          </div>
+                        ) : (
+                          <a href={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}/${selectedDoctor.degree_document.replace(/\\/g, '/')}`} target="_blank" rel="noreferrer" className="w-full h-full">
+                              <img src={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}/${selectedDoctor.degree_document.replace(/\\/g, '/')}`} alt="Degree Document" className="w-full h-full object-contain" />
+                          </a>
+                        )
+                      ) : (
+                        <span className="text-slate-400 italic">No document uploaded</span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {selectedDoctor.experience_document && (
+                  <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
+                    <h4 className="font-semibold text-slate-700 uppercase tracking-wider text-xs mb-3 border-b pb-2">Experience Document</h4>
+                    <div className="h-48 bg-slate-100 rounded-md border border-slate-200 flex items-center justify-center overflow-hidden relative">
+                        {selectedDoctor.experience_document.endsWith('.pdf') ? (
+                          <div className="flex flex-col items-center justify-center space-y-3 h-full">
+                            <FileText size={48} className="text-red-400" />
+                            <a href={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}/${selectedDoctor.experience_document.replace(/\\/g, '/')}`} target="_blank" rel="noreferrer" className="text-primary-600 font-semibold hover:underline bg-primary-50 px-4 py-2 rounded-full border border-primary-100">Open PDF Document</a>
+                          </div>
+                        ) : (
+                          <a href={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}/${selectedDoctor.experience_document.replace(/\\/g, '/')}`} target="_blank" rel="noreferrer" className="w-full h-full">
+                              <img src={`${api.defaults.baseURL.replace(/\/api$/, '') || 'http://localhost:5000'}/${selectedDoctor.experience_document.replace(/\\/g, '/')}`} alt="Experience Document" className="w-full h-full object-contain" />
+                          </a>
+                        )}
+                    </div>
+                  </div>
+                  )}
+
                 </div>
               </div>
             </div>
 
-            <div className="p-6 border-t border-slate-200 bg-white sticky bottom-0 flex justify-end space-x-4">
-              <button onClick={() => setSelectedDoctor(null)} className="px-6 py-2 border border-slate-300 rounded-md text-slate-700 font-medium hover:bg-slate-50 transition">Close</button>
-              {selectedDoctor.is_verified ? (
-                <button onClick={() => { handleVerify(selectedDoctor.id, true); }} className="px-6 py-2 bg-rose-600 text-white rounded-md font-bold hover:bg-rose-700 shadow-sm transition">Revoke Verification</button>
-              ) : (
-                <button onClick={() => { handleVerify(selectedDoctor.id, false); }} className="px-6 py-2 bg-emerald-600 text-white rounded-md font-bold hover:bg-emerald-700 shadow-sm transition">Verify Doctor</button>
-              )}
+            <div className="p-6 border-t border-slate-200 bg-white sticky bottom-0 flex justify-between items-center">
+              <div className="flex items-center space-x-2">
+                 <button
+                   onClick={() => setReasonModal({ isOpen: true, action: 'rejected' })}
+                   className="px-4 py-2 border border-red-300 bg-red-50 text-red-700 rounded-md font-medium hover:bg-red-100 transition shadow-sm text-sm">
+                     Reject Application
+                 </button>
+                 {selectedDoctor.verification_status !== 'pending' && (
+                     <button onClick={() => handleVerify(selectedDoctor.id, 'pending')} className="px-4 py-2 border border-amber-300 bg-amber-50 text-amber-700 rounded-md font-medium hover:bg-amber-100 transition shadow-sm text-sm">
+                         Set Pending
+                     </button>
+                 )}
+                 {selectedDoctor.verification_status === 'verified' && (
+                     <button
+                       onClick={() => setReasonModal({ isOpen: true, action: 'suspended' })}
+                       className="px-4 py-2 border border-slate-300 bg-slate-100 text-slate-700 rounded-md font-medium hover:bg-slate-200 transition shadow-sm text-sm">
+                         Suspend Account
+                     </button>
+                 )}
+              </div>
+              <div className="flex space-x-4">
+                  <button onClick={() => setSelectedDoctor(null)} className="px-6 py-2 border border-slate-300 rounded-md text-slate-700 font-medium hover:bg-slate-50 transition">Close</button>
+                  {selectedDoctor.verification_status !== 'verified' && (
+                    <button onClick={() => handleVerify(selectedDoctor.id, 'verified')} className="px-6 py-2 bg-emerald-600 text-white rounded-md font-bold hover:bg-emerald-700 shadow-sm transition">Verify & Approve</button>
+                  )}
+              </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reason Modal — Reject / Suspend */}
+      {selectedDoctor && (
+        <ReasonModal
+          isOpen={reasonModal.isOpen}
+          onClose={() => setReasonModal({ isOpen: false, action: null })}
+          onConfirm={(reason) => {
+            handleVerify(selectedDoctor.id, reasonModal.action, reason);
+            setReasonModal({ isOpen: false, action: null });
+          }}
+          title={reasonModal.action === 'rejected' ? 'Reject Application' : 'Suspend Account'}
+          description={
+            reasonModal.action === 'rejected'
+              ? `You are about to reject Dr. ${selectedDoctor.name}'s application. Please provide a clear reason — this will be sent to the doctor by email.`
+              : `You are about to suspend Dr. ${selectedDoctor.name}'s account. Please provide a reason — this will be communicated to the doctor.`
+          }
+          placeholder={
+            reasonModal.action === 'rejected'
+              ? 'e.g. Incomplete or unverifiable license documentation…'
+              : 'e.g. Violation of platform terms of service…'
+          }
+          confirmText={reasonModal.action === 'rejected' ? 'Reject Application' : 'Suspend Account'}
+          variant={reasonModal.action === 'rejected' ? 'danger' : 'warning'}
+        />
+      )}
+
+      {/* Edit Doctor Modal */}
+      {editDoctor && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+            <div className="p-5 border-b border-slate-200 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-slate-800">Edit Dr. {editDoctor.name}</h3>
+              <button onClick={() => setEditDoctor(null)} className="text-slate-400 hover:text-slate-600 text-2xl font-bold leading-none">&times;</button>
+            </div>
+            <form onSubmit={handleEditSubmit} className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Full Name</label>
+                  <input type="text" required value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Email</label>
+                  <input type="email" required value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Specialty</label>
+                  <input type="text" value={editForm.specialty} onChange={e => setEditForm({...editForm, specialty: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">License Number</label>
+                  <input type="text" value={editForm.license_number} onChange={e => setEditForm({...editForm, license_number: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Experience (Years)</label>
+                  <input type="number" min="0" value={editForm.experience_years} onChange={e => setEditForm({...editForm, experience_years: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Current Workplace</label>
+                  <input type="text" value={editForm.current_workplace} onChange={e => setEditForm({...editForm, current_workplace: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setEditDoctor(null)}
+                  className="px-4 py-2 border border-slate-300 rounded-md text-sm text-slate-600 hover:bg-slate-50 transition">Cancel</button>
+                <button type="submit" disabled={editLoading}
+                  className="px-5 py-2 bg-primary-600 text-white rounded-md text-sm font-bold hover:bg-primary-700 transition disabled:opacity-70">
+                  {editLoading ? 'Saving…' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -882,6 +1137,11 @@ const SpecialistsTab = () => {
   
   const [modalConfig, setModalConfig] = useState({ isOpen: false, specialistId: null });
 
+  // Edit state
+  const [editSpec, setEditSpec] = useState(null);
+  const [editSpecForm, setEditSpecForm] = useState({ name: '', email: '', work_location: '', specializations: [] });
+  const [editSpecLoading, setEditSpecLoading] = useState(false);
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -947,6 +1207,38 @@ const SpecialistsTab = () => {
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to remove specialist. Ensure they have no dependent records.');
     }
+  };
+
+  const openEditSpec = (spec) => {
+    setEditSpec(spec);
+    setEditSpecForm({
+      name: spec.name || '',
+      email: spec.email || '',
+      work_location: spec.work_location || '',
+      specializations: spec.specializations || [],
+    });
+  };
+
+  const handleEditSpecSubmit = async (e) => {
+    e.preventDefault();
+    setEditSpecLoading(true);
+    try {
+      await api.put(`/users/${editSpec.id}`, editSpecForm);
+      toast.success('Specialist updated successfully');
+      setEditSpec(null);
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update specialist');
+    } finally {
+      setEditSpecLoading(false);
+    }
+  };
+
+  const handleSpecCategoryChange = (catName) => {
+    setEditSpecForm(prev => {
+      const has = prev.specializations.includes(catName);
+      return { ...prev, specializations: has ? prev.specializations.filter(c => c !== catName) : [...prev.specializations, catName] };
+    });
   };
 
   return (
@@ -1082,7 +1374,11 @@ const SpecialistsTab = () => {
                     <div className="text-xs text-slate-500 max-w-xs truncate" title={spec.specializations?.join(', ')}>{spec.specializations?.join(', ') || 'None'}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button className="text-red-500 hover:text-red-700 font-medium" onClick={() => confirmDelete(spec.id)}>Remove</button>
+                    <RowMenu
+                      onEdit={() => openEditSpec(spec)}
+                      onDelete={() => confirmDelete(spec.id)}
+                      deleteLabel="Remove"
+                    />
                   </td>
                 </tr>
               ))}
@@ -1096,6 +1392,56 @@ const SpecialistsTab = () => {
           </div>
           <p className="text-xl text-slate-700 font-bold mb-1">No specialists registered yet</p>
           <p className="text-slate-500 max-w-sm mx-auto">Register lab technicians and radiologists here.</p>
+        </div>
+      )}
+
+      {/* Edit Specialist Modal */}
+      {editSpec && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+            <div className="p-5 border-b border-slate-200 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-slate-800">Edit {editSpec.name}</h3>
+              <button onClick={() => setEditSpec(null)} className="text-slate-400 hover:text-slate-600 text-2xl font-bold leading-none">&times;</button>
+            </div>
+            <form onSubmit={handleEditSpecSubmit} className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Full Name</label>
+                  <input type="text" required value={editSpecForm.name} onChange={e => setEditSpecForm({...editSpecForm, name: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Email</label>
+                  <input type="email" required value={editSpecForm.email} onChange={e => setEditSpecForm({...editSpecForm, email: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Work Location / Room</label>
+                  <input type="text" value={editSpecForm.work_location} onChange={e => setEditSpecForm({...editSpecForm, work_location: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-2">Capabilities / Specializations</label>
+                <div className="flex flex-wrap gap-2">
+                  {categories.filter(c => c.department_type === (editSpec.role === 'laboratorist' ? 'laboratory' : 'radiology')).map(cat => (
+                    <label key={cat.id} className={`cursor-pointer px-3 py-1.5 rounded-full border text-xs font-semibold transition ${editSpecForm.specializations.includes(cat.name) ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}>
+                      <input type="checkbox" className="hidden" onChange={() => handleSpecCategoryChange(cat.name)} checked={editSpecForm.specializations.includes(cat.name)} />
+                      {cat.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setEditSpec(null)}
+                  className="px-4 py-2 border border-slate-300 rounded-md text-sm text-slate-600 hover:bg-slate-50 transition">Cancel</button>
+                <button type="submit" disabled={editSpecLoading}
+                  className="px-5 py-2 bg-primary-600 text-white rounded-md text-sm font-bold hover:bg-primary-700 transition disabled:opacity-70">
+                  {editSpecLoading ? 'Saving…' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -1251,8 +1597,10 @@ const ServicesTab = () => {
                 <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full uppercase mt-1 inline-block">{c.department_type}</span>
               </div>
               <div className="space-x-2">
-                <button onClick={() => handleEditCategory(c)} className="text-primary-600 hover:text-primary-800 text-sm font-semibold bg-primary-50 px-3 py-1 rounded">Edit</button>
-                <button onClick={() => confirmDelete('category', c.id)} className="text-red-600 hover:text-red-800 text-sm font-semibold bg-red-50 px-3 py-1 rounded">Delete</button>
+                <RowMenu
+                  onEdit={() => handleEditCategory(c)}
+                  onDelete={() => confirmDelete('category', c.id)}
+                />
               </div>
             </div>
           ))}
@@ -1313,8 +1661,10 @@ const ServicesTab = () => {
                   <td className="px-4 py-3 text-sm text-slate-500">{item.Category?.name}</td>
                   <td className="px-4 py-3 text-emerald-600 font-bold">{item.price} Birr</td>
                   <td className="px-4 py-3 text-right text-sm space-x-3">
-                    <button className="text-primary-600 hover:text-primary-800 font-medium" onClick={() => handleEditItem(item)}>Edit</button>
-                    <button className="text-red-500 hover:text-red-700 font-medium" onClick={() => confirmDelete('item', item.id)}>Delete</button>
+                    <RowMenu
+                      onEdit={() => handleEditItem(item)}
+                      onDelete={() => confirmDelete('item', item.id)}
+                    />
                   </td>
                 </tr>
               ))}

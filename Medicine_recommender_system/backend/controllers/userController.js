@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
 const validateEmail = require('../utils/validateEmail');
+const sendEmail = require('../utils/sendEmail');
 
 
 // @desc    Get all users (filter by role optional)
@@ -50,7 +51,7 @@ exports.getVerifiedDoctors = async (req, res) => {
 
     const doctors = await User.findAll({
       where: whereClause,
-      attributes: ['id', 'name', 'specialty', 'experience_years', 'is_verified'],
+      attributes: ['id', 'name', 'specialty', 'experience_years', 'is_verified', 'availability_status'],
       include: [
         {
           model: Availability,
@@ -158,7 +159,7 @@ exports.createUser = async (req, res) => {
   }
 };
 
-// @desc    Verify a doctor
+// @desc    Verify a doctor (Approve, Reject, Suspend)
 // @route   PUT /api/users/:id/verify
 // @access  Private (Admin)
 exports.verifyDoctor = async (req, res) => {
@@ -173,16 +174,78 @@ exports.verifyDoctor = async (req, res) => {
       return res.status(400).json({ message: 'Only doctors can be verified' });
     }
 
-    // Toggle verification status or explicitly set
-    user.is_verified = req.body.is_verified !== undefined ? req.body.is_verified : true;
+    const { status, rejection_reason } = req.body;
+    
+    if (!['pending', 'verified', 'rejected', 'suspended'].includes(status)) {
+       return res.status(400).json({ message: 'Invalid status' });
+    }
+
+    user.verification_status = status;
+    user.is_verified = status === 'verified';
+    
+    if (status === 'rejected' || status === 'suspended') {
+        user.rejection_reason = rejection_reason || null;
+    } else {
+        user.rejection_reason = null;
+    }
+
     await user.save();
 
+    // Send email notification to doctor based on status
+    try {
+      let subject, message;
+      const appName = process.env.FROM_NAME || 'HealthConnect';
+      const supportEmail = process.env.FROM_EMAIL || 'support@healthconnect.com';
+
+      if (status === 'verified') {
+        subject = `${appName} — Your Account Has Been Approved!`;
+        message =
+          `Dear Dr. ${user.name},\n\n` +
+          `Great news! Your doctor account on ${appName} has been reviewed and approved by our admin team.\n\n` +
+          `You can now log in and start accepting patient consultations.\n\n` +
+          `Login at: ${process.env.FRONTEND_URL || 'http://localhost:3000'}/login\n\n` +
+          `If you have any questions, please contact us at ${supportEmail}.\n\n` +
+          `Welcome aboard,\nThe ${appName} Team`;
+      } else if (status === 'rejected') {
+        subject = `${appName} — Application Update`;
+        message =
+          `Dear Dr. ${user.name},\n\n` +
+          `We have reviewed your application and unfortunately we are unable to approve it at this time.\n\n` +
+          (rejection_reason ? `Reason: ${rejection_reason}\n\n` : '') +
+          `If you believe this is an error or would like to reapply with updated documents, please contact us at ${supportEmail}.\n\n` +
+          `Regards,\nThe ${appName} Team`;
+      } else if (status === 'suspended') {
+        subject = `${appName} — Account Suspended`;
+        message =
+          `Dear Dr. ${user.name},\n\n` +
+          `Your account on ${appName} has been suspended.\n\n` +
+          (rejection_reason ? `Reason: ${rejection_reason}\n\n` : '') +
+          `Please contact us at ${supportEmail} if you have questions or wish to appeal this decision.\n\n` +
+          `Regards,\nThe ${appName} Team`;
+      } else if (status === 'pending') {
+        subject = `${appName} — Application Under Review`;
+        message =
+          `Dear Dr. ${user.name},\n\n` +
+          `Your application is currently under review by our admin team. We will notify you once a decision has been made.\n\n` +
+          `If you have any questions, please contact us at ${supportEmail}.\n\n` +
+          `Regards,\nThe ${appName} Team`;
+      }
+
+      if (subject && message) {
+        await sendEmail({ email: user.email, subject, message });
+      }
+    } catch (emailErr) {
+      // Don't fail the request if email sending fails — just log it
+      console.error('[verifyDoctor] Failed to send notification email:', emailErr.message);
+    }
+
     res.status(200).json({
-      message: `Doctor ${user.is_verified ? 'verified' : 'unverified'} successfully`,
+      message: `Doctor verification status updated to ${status}`,
       user: {
         id: user.id,
         name: user.name,
-        is_verified: user.is_verified
+        is_verified: user.is_verified,
+        verification_status: user.verification_status
       }
     });
 
@@ -291,6 +354,42 @@ exports.deleteUser = async (req, res) => {
   }
 };
 
+// @desc    Update a user (doctor or specialist) by admin
+// @route   PUT /api/users/:id
+// @access  Private (Admin)
+exports.updateUser = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const {
+      name, email, specialty, license_number, experience_years,
+      work_location, specializations, current_workplace
+    } = req.body;
+
+    if (name !== undefined) user.name = name;
+    if (specialty !== undefined) user.specialty = specialty;
+    if (license_number !== undefined) user.license_number = license_number;
+    if (experience_years !== undefined) user.experience_years = experience_years;
+    if (work_location !== undefined) user.work_location = work_location;
+    if (specializations !== undefined) user.specializations = specializations;
+    if (current_workplace !== undefined) user.current_workplace = current_workplace;
+
+    // Only update email if it changed and isn't taken
+    if (email !== undefined && email !== user.email) {
+      const existing = await User.findOne({ where: { email } });
+      if (existing) return res.status(400).json({ message: 'Email is already in use by another account.' });
+      user.email = email;
+    }
+
+    await user.save();
+    res.status(200).json({ message: 'User updated successfully', user: { id: user.id, name: user.name, email: user.email } });
+  } catch (error) {
+    console.error('Update user error:', error);
+    res.status(500).json({ message: 'Server error updating user' });
+  }
+};
+
 // @desc    Toggle doctor availability status
 // @route   PUT /api/users/availability
 // @access  Private (Doctor)
@@ -309,12 +408,40 @@ exports.toggleAvailability = async (req, res) => {
     user.availability_status = status;
     await user.save();
 
-    // If they became available, trigger auto-assignment
+    const consultationController = require('./consultationController');
+    const { Consultation } = require('../models');
+
     if (status === 'available') {
-      const consultationController = require('./consultationController');
-      // trigger auto assignment
+      // If they became available, trigger auto-assignment
       if (consultationController.triggerAutoAssignment) {
         consultationController.triggerAutoAssignment();
+      }
+    } else if (status === 'offline' || status === 'busy') {
+      // Reassign patients that were just assigned but not yet started
+      const pendingConsultations = await Consultation.findAll({
+        where: {
+          doctor_id: user.id,
+          status: 'assigned' // Note: we do not reassign 'in_progress' as chat has already started
+        }
+      });
+
+      if (pendingConsultations.length > 0) {
+        for (const consultation of pendingConsultations) {
+          consultation.doctor_id = null;
+          consultation.status = 'pending';
+          consultation.queue_status = 'waiting';
+          await consultation.save();
+          
+          if (global.io) {
+            global.io.emit('queue_update', { message: 'Patient returned to queue due to doctor unavailability' });
+            global.io.to(`user_${consultation.patient_id}`).emit('doctor_unavailable', { consultation_id: consultation.id });
+          }
+        }
+        
+        // Re-trigger auto-assignment for these newly pending patients
+        if (consultationController.triggerAutoAssignment) {
+          consultationController.triggerAutoAssignment();
+        }
       }
     }
 

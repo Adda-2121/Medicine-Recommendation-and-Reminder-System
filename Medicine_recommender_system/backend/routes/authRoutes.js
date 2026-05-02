@@ -22,7 +22,13 @@ router.post('/send-verification', sendVerificationOtp);       // email OTP
 router.post('/send-verification-sms', sendVerificationSms);   // SMS OTP
 router.post('/verify-otp', verifyOtp);                        // unified verify
 router.post('/verify-email', verifyEmailOtp);                 // backwards compat alias
-router.post('/register', upload.fields([{ name: 'document', maxCount: 1 }, { name: 'selfie', maxCount: 1 }]), register);
+router.post('/register', upload.fields([
+  { name: 'document', maxCount: 1 },
+  { name: 'selfie', maxCount: 1 },
+  { name: 'id_document', maxCount: 1 },
+  { name: 'degree_document', maxCount: 1 },
+  { name: 'experience_document', maxCount: 1 }
+]), register);
 router.post('/login', login);
 router.get('/me', protect, getMe);
 router.post('/forgotpassword', forgotPassword);

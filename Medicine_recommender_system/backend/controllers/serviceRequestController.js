@@ -97,6 +97,21 @@ exports.requestService = async (req, res) => {
       );
     }
 
+        // Change consultation status
+    consultation.status = 'waiting_for_results';
+    await consultation.save();
+
+    // Free up doctor
+    const doctor = await User.findByPk(req.user.id);
+    if (doctor) {
+      doctor.availability_status = 'available';
+      await doctor.save();
+      
+      // Trigger auto-assignment for the next patient
+      const { triggerAutoAssignment } = require('./consultationController');
+      triggerAutoAssignment().catch(e => console.error("Auto-assign error:", e));
+    }
+
     res.status(201).json({ message: 'Service requested successfully', serviceRequest });
   } catch (error) {
     console.error('Error requesting service:', error);

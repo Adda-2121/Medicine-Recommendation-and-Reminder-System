@@ -86,6 +86,13 @@ exports.verifyPayment = async (req, res) => {
       );
     }
 
+    if (status === 'verified') {
+      const consultationController = require('./consultationController');
+      if (consultationController.triggerAutoAssignment) {
+        consultationController.triggerAutoAssignment();
+      }
+    }
+
     res.status(200).json({
       message: `Payment marked as ${status}`,
       payment,

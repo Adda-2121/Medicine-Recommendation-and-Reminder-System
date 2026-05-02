@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './contexts/AuthContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import PendingVerification from './pages/PendingVerification';
 import PatientDashboard from './pages/PatientDashboard';
 import DoctorDashboard from './pages/DoctorDashboard';
 import AdminDashboard from './pages/AdminDashboard';
@@ -72,6 +73,7 @@ const AppContent = () => {
       {/* Public Auth Routes */}
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/register" element={user ? <Navigate to="/" replace /> : <Register />} />
+      <Route path="/pending-verification" element={<PendingVerification />} />
       <Route path="/forgot-password" element={user ? <Navigate to="/" replace /> : <ForgotPassword />} />
       <Route path="/reset-password/:token" element={user ? <Navigate to="/" replace /> : <ResetPassword />} />
       <Route path="/verify-otp" element={user ? <Navigate to="/" replace /> : <VerifyOtp />} />

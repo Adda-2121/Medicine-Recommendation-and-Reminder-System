@@ -146,7 +146,7 @@ exports.verifyEmailOtp = exports.verifyOtp;
 // @access  Public
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, role, phone_number, age, sex, license_number, license_issuing_authority, license_expiry_date } = req.body;
+    const { name, email, password, role, phone_number, age, sex, license_number, license_issuing_authority, license_expiry_date, degree, university_name, graduation_year, experience_years, current_workplace } = req.body;
 
     // Validation
     if (/\d/.test(name)) {
@@ -160,12 +160,25 @@ exports.register = async (req, res) => {
     }
 
     // Require OTP verification before account creation (email or phone)
-    const otpKey = email.toLowerCase();
-    const otpRecord = otpStore.get(otpKey);
+    // Check email OTP first; if not found, check phone OTP (SMS verification path)
+    const emailKey = email.toLowerCase();
+    const phoneKey = phone_number ? phone_number.replace(/\s/g, '') : null;
+
+    let otpRecord = otpStore.get(emailKey);
+    let usedKey = emailKey;
+
+    if (!otpRecord || !otpRecord.verified) {
+      // Try phone key as fallback (SMS verification)
+      if (phoneKey) {
+        otpRecord = otpStore.get(phoneKey);
+        usedKey = phoneKey;
+      }
+    }
+
     if (!otpRecord || !otpRecord.verified) {
       return res.status(400).json({ message: 'Identity must be verified before registering. Please complete the verification step.' });
     }
-    otpStore.delete(otpKey);
+    otpStore.delete(usedKey);
 
     if (!password || password.length < 8) {
       return res.status(400).json({ message: 'Password must be at least 8 characters long.' });
@@ -178,11 +191,11 @@ exports.register = async (req, res) => {
     }
 
     if (userRole === 'doctor') {
-      if (!req.files || !req.files['document'] || !req.files['selfie']) {
-        return res.status(400).json({ message: 'Both License Document and Selfie are required for doctors.' });
+      if (!req.files || !req.files['document'] || !req.files['selfie'] || !req.files['id_document'] || !req.files['degree_document']) {
+        return res.status(400).json({ message: 'License Document, Selfie, National ID, and Degree Document are required for doctors.' });
       }
-      if (!license_number || !license_issuing_authority || !license_expiry_date) {
-        return res.status(400).json({ message: 'License Number, Issuing Authority, and Expiry Date are required for doctors.' });
+      if (!license_number || !license_issuing_authority || !license_expiry_date || !degree || !university_name || !graduation_year) {
+        return res.status(400).json({ message: 'All professional and educational fields are required for doctors.' });
       }
     }
 
@@ -211,9 +224,22 @@ exports.register = async (req, res) => {
       userPayload.license_number = license_number;
       userPayload.license_issuing_authority = license_issuing_authority;
       userPayload.license_expiry_date = license_expiry_date;
+      userPayload.degree = degree;
+      userPayload.university_name = university_name;
+      userPayload.graduation_year = graduation_year;
+      userPayload.experience_years = experience_years || null;
+      userPayload.current_workplace = current_workplace || null;
+      
       userPayload.verification_document = req.files['document'][0].path;
       userPayload.selfie_document = req.files['selfie'][0].path;
+      userPayload.id_document = req.files['id_document'][0].path;
+      userPayload.degree_document = req.files['degree_document'][0].path;
+      if (req.files['experience_document']) {
+        userPayload.experience_document = req.files['experience_document'][0].path;
+      }
+      
       userPayload.is_verified = false;
+      userPayload.verification_status = 'pending';
     }
 
     const user = await User.create(userPayload);
@@ -285,6 +311,9 @@ exports.login = async (req, res) => {
         profile_picture: user.profile_picture,
         specializations: user.specializations,
         work_location: user.work_location,
+        is_verified: user.is_verified,
+        verification_status: user.verification_status,
+        rejection_reason: user.rejection_reason,
       },
     });
   } catch (error) {

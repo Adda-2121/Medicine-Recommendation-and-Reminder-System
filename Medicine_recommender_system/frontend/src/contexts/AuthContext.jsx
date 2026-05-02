@@ -38,8 +38,15 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (userData) => {
     try {
-      const { name, email, password, role, phone_number, document, selfie, license_number, license_issuing_authority, license_expiry_date } = userData;
-      let data = { name, email, password, role, phone_number };
+      const {
+        name, email, password, role, phone_number,
+        document, selfie, id_document, degree_document, experience_document,
+        license_number, license_issuing_authority, license_expiry_date,
+        degree, university_name, graduation_year, experience_years, current_workplace,
+        age, sex
+      } = userData;
+
+      let data;
       let headers = { 'Content-Type': 'application/json' };
 
       if (role === 'doctor') {
@@ -49,14 +56,26 @@ export const AuthProvider = ({ children }) => {
         data.append('password', password);
         data.append('role', role);
         if (phone_number) data.append('phone_number', phone_number);
+        if (age) data.append('age', age);
+        if (sex) data.append('sex', sex);
         data.append('license_number', license_number);
         data.append('license_issuing_authority', license_issuing_authority);
         data.append('license_expiry_date', license_expiry_date);
-        
+        if (degree) data.append('degree', degree);
+        if (university_name) data.append('university_name', university_name);
+        if (graduation_year) data.append('graduation_year', graduation_year);
+        if (experience_years) data.append('experience_years', experience_years);
+        if (current_workplace) data.append('current_workplace', current_workplace);
+
         if (document) data.append('document', document);
         if (selfie) data.append('selfie', selfie);
-        
+        if (id_document) data.append('id_document', id_document);
+        if (degree_document) data.append('degree_document', degree_document);
+        if (experience_document) data.append('experience_document', experience_document);
+
         headers = { 'Content-Type': 'multipart/form-data' };
+      } else {
+        data = { name, email, password, role, phone_number, age, sex };
       }
 
       const res = await api.post('/auth/register', data, { headers });

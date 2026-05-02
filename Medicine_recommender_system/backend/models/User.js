@@ -44,6 +44,42 @@ const User = sequelize.define('User', {
     type: DataTypes.BOOLEAN,
     defaultValue: false, // Default to false, even for patients, but we only really care about this for doctors
   },
+  verification_status: {
+    type: DataTypes.ENUM('pending', 'verified', 'rejected', 'suspended'),
+    defaultValue: 'pending',
+  },
+  rejection_reason: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  id_document: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  degree: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  university_name: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  graduation_year: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  degree_document: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  experience_document: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  current_workplace: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   availability_status: {
     type: DataTypes.ENUM('available', 'busy', 'offline'),
     defaultValue: 'offline',

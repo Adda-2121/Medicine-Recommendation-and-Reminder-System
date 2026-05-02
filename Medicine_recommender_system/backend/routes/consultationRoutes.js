@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { requestConsultation, getConsultations, assignDoctor, getPatientStatuses, completeConsultation } = require('../controllers/consultationController');
+const { requestConsultation, getConsultations, assignDoctor, getPatientStatuses, completeConsultation, resumeConsultation } = require('../controllers/consultationController');
 const { protect, authorize } = require('../middlewares/authMiddleware');
 
 router.route('/')
@@ -12,6 +12,9 @@ router.get('/patient-statuses', protect, authorize('company_admin'), getPatientS
 
 // Doctor completes a consultation
 router.put('/:id/complete', protect, authorize('doctor'), completeConsultation);
+
+// Doctor resumes a consultation
+router.put('/:id/resume', protect, authorize('doctor'), resumeConsultation);
 
 // Only admins can manually assign.
 router.put('/:id/assign', protect, authorize('company_admin'), assignDoctor);

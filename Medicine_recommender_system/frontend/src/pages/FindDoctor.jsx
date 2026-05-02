@@ -47,29 +47,18 @@ const FindDoctor = () => {
     setSelectedSlot(null);
     setBookingForm({ reason: '', symptoms_description: '', commonReason: '' });
     
-    try {
-      setFetchingSlots(true);
-      const res = await api.get(`/availability`, {
-        params: { doctor_id: doctor.id, is_booked: false }
-      });
-      setAvailabilities(res.data);
-    } catch (err) {
-      console.error('Failed to fetch availability', err);
-    } finally {
-      setFetchingSlots(false);
-    }
+    
   };
 
   const handleBookAppointment = async (e) => {
     e.preventDefault();
-    if (!selectedSlot || !selectedDoctor) return;
+    if (!selectedDoctor) return;
 
     try {
       setIsSubmitting(true);
       const payload = {
         doctor_id: selectedDoctor.id,
-        appointment_date: selectedSlot.date,
-        appointment_time: selectedSlot.start_time,
+        
         reason: bookingForm.reason,
         symptoms_description: bookingForm.symptoms_description
       };
@@ -178,18 +167,23 @@ const FindDoctor = () => {
                 </div>
 
                 <div className="mt-2 mb-2">
-                  {doctor.Availabilities && doctor.Availabilities.length > 0 ? (
-                    <span className="inline-flex items-center text-green-700 bg-green-50 border border-green-200 px-2.5 py-1 rounded-full text-xs font-semibold">
+                  {doctor.availability_status === 'available' ? (
+                    <span className="inline-flex items-center text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full text-xs font-semibold">
                       <span className="relative flex h-2 w-2 mr-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                       </span>
-                      {t('findDoctor.available')}
+                      Available Now
+                    </span>
+                  ) : doctor.availability_status === 'busy' ? (
+                    <span className="inline-flex items-center text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full text-xs font-semibold">
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500 mr-2"></span>
+                      Busy
                     </span>
                   ) : (
                     <span className="inline-flex items-center text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-full text-xs font-medium">
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-400 mr-2"></span>
-                      {t('findDoctor.unavailable')}
+                      Offline
                     </span>
                   )}
                 </div>
@@ -198,7 +192,7 @@ const FindDoctor = () => {
                   onClick={() => handleSelectDoctor(doctor)}
                   className="w-full mt-4 flex items-center justify-center py-2.5 bg-slate-50 hover:bg-primary-50 text-slate-700 hover:text-primary-700 font-medium rounded-lg border border-slate-200 hover:border-primary-200 transition"
                 >
-                  {t('findDoctor.viewAvailability')} <ChevronRight size={16} className="ml-1" />
+                  Contact The Doctor <ChevronRight size={16} className="ml-1" />
                 </button>
               </div>
             </div>
@@ -230,53 +224,11 @@ const FindDoctor = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 md:p-8 flex flex-col md:flex-row gap-8">
-              {/* Left Column: Slots */}
-              <div className="w-full md:w-1/2 flex flex-col">
-                <h4 className="font-semibold text-slate-800 mb-4 flex items-center"><Calendar size={18} className="mr-2 text-primary-500" /> {t('findDoctor.selectSlot')}</h4>
-                
-                {fetchingSlots ? (
-                  <div className="flex-1 flex items-center justify-center text-slate-400 p-8">{t('findDoctor.loading')}</div>
-                ) : availabilities.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 text-center">
-                    <Calendar size={32} className="text-slate-300 mb-2" />
-                    <p className="font-medium">{t('findDoctor.noSlots')}</p>
-                    <p className="text-xs mt-1">{t('findDoctor.checkBack')}</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3 overflow-y-auto max-h-[300px] pr-2 hidden-scrollbar">
-                    {availabilities.map(slot => (
-                      <button
-                        key={slot.id}
-                        onClick={() => setSelectedSlot(slot)}
-                        className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden
-                          ${selectedSlot?.id === slot.id 
-                            ? 'bg-primary-50 border-primary-500 shadow-sm' 
-                            : 'bg-white border-slate-200 hover:border-primary-300 hover:bg-slate-50'
-                          }
-                        `}
-                      >
-                        {selectedSlot?.id === slot.id && <div className="absolute top-0 right-0 w-0 h-0 border-t-[20px] border-t-primary-500 border-l-[20px] border-l-transparent"></div>}
-                        <p className={`font-semibold text-sm ${selectedSlot?.id === slot.id ? 'text-primary-800' : 'text-slate-800'}`}>
-                          {new Date(slot.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-                        </p>
-                        <p className={`text-xs mt-0.5 ${selectedSlot?.id === slot.id ? 'text-primary-600 font-medium' : 'text-slate-500'}`}>
-                          {slot.start_time.substring(0,5)} - {slot.end_time.substring(0,5)}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
               {/* Right Column: Form */}
-              <div className="w-full md:w-1/2 flex flex-col">
+              <div className="w-full flex flex-col">
                 <h4 className="font-semibold text-slate-800 mb-4 flex items-center"><Activity size={18} className="mr-2 text-primary-500" /> {t('findDoctor.details')}</h4>
                 
-                {!selectedSlot ? (
-                  <div className="flex-1 flex items-center justify-center text-slate-400 p-8 bg-slate-50 border border-slate-200 rounded-xl">
-                    <p className="text-center text-sm">{t('findDoctor.selectFirst')}</p>
-                  </div>
-                ) : (
+                <>
                   <form id="booking-form" onSubmit={handleBookAppointment} className="flex flex-col flex-1 space-y-4">
                     <div className="space-y-3">
                       <div>
@@ -331,7 +283,7 @@ const FindDoctor = () => {
                       ></textarea>
                     </div>
                   </form>
-                )}
+                </>
               </div>
             </div>
 
@@ -347,7 +299,7 @@ const FindDoctor = () => {
               <button 
                 type="submit" 
                 form="booking-form"
-                disabled={!selectedSlot || isSubmitting}
+                disabled={isSubmitting}
                 className="px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-lg transition disabled:opacity-50 disabled:hover:bg-primary-600 flex items-center"
               >
                 {isSubmitting ? t('findDoctor.booking') : t('findDoctor.confirm')}

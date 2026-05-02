@@ -234,6 +234,7 @@ exports.triggerAutoAssignment = async () => {
     });
 
     if (availableDoctors.length === 0) {
+      // Fallback: If no one is explicitly available, try finding any verified doctor
       availableDoctors = await User.findAll({
         where: { role: 'doctor', is_verified: true }
       });
@@ -252,19 +253,34 @@ exports.triggerAutoAssignment = async () => {
 
     if (pendingConsultations.length === 0) return;
 
+    // Calculate workload for each available doctor
+    const doctorWorkloads = [];
+    for (const doc of availableDoctors) {
+      const activeCount = await Consultation.count({
+        where: {
+          doctor_id: doc.id,
+          status: { [Op.in]: ['assigned', 'in_progress'] }
+        }
+      });
+      doctorWorkloads.push({ doctor: doc, workload: activeCount });
+    }
+
+    // Sort consultations by Severity and Wait Time
     const severityRank = { 'high': 3, 'medium': 2, 'low': 1 };
     pendingConsultations.sort((a, b) => {
       const rankA = severityRank[a.severity_level] || 1;
       const rankB = severityRank[b.severity_level] || 1;
-      if (rankA !== rankB) return rankB - rankA; // Descending
-      return new Date(a.created_at) - new Date(b.created_at); // Ascending time
+      if (rankA !== rankB) return rankB - rankA; // Descending priority
+      return new Date(a.created_at) - new Date(b.created_at); // Ascending time (older first)
     });
 
     // Assign them
-    let docIndex = 0;
-
     for (let patIndex = 0; patIndex < pendingConsultations.length; patIndex++) {
-      const doctor = availableDoctors[docIndex % availableDoctors.length];
+      // Sort doctors to find the least busy one
+      doctorWorkloads.sort((a, b) => a.workload - b.workload);
+      
+      const selectedEntry = doctorWorkloads[0];
+      const doctor = selectedEntry.doctor;
       const consultation = pendingConsultations[patIndex];
 
       // Assign
@@ -273,11 +289,8 @@ exports.triggerAutoAssignment = async () => {
       consultation.queue_status = 'assigned';
       await consultation.save();
 
-      // Update doctor status if they were available
-      if (doctor.availability_status === 'available') {
-        doctor.availability_status = 'busy';
-        await doctor.save();
-      }
+      // Update local workload count so subsequent loop iterations balance correctly
+      selectedEntry.workload++;
 
       // Notify
       sendPushNotification(consultation.patient_id, 'Doctor Assigned', `Dr. ${doctor.name} has been assigned to your consultation.`, 'consultation', '/consultations').catch(()=>{});
@@ -288,8 +301,6 @@ exports.triggerAutoAssignment = async () => {
         global.io.to(`user_${doctor.id}`).emit('new_patient_assigned', { consultation_id: consultation.id });
         global.io.emit('queue_update', {});
       }
-
-      docIndex++;
     }
   } catch (error) {
     console.error('Error in auto assignment:', error);
@@ -483,5 +494,57 @@ exports.getPatientStatuses = async (req, res) => {
   } catch (error) {
     console.error('Get patient statuses error:', error);
     res.status(500).json({ message: 'Server error fetching patient statuses' });
+  }
+};
+
+// @desc    Resume a consultation after results are ready
+// @route   PUT /api/consultations/:id/resume
+// @access  Private (Doctor)
+exports.resumeConsultation = async (req, res) => {
+  try {
+    if (req.user.role !== 'doctor') {
+      return res.status(403).json({ message: 'Only doctors can resume consultations.' });
+    }
+
+    const { id } = req.params;
+    const consultation = await Consultation.findByPk(id);
+
+    if (!consultation || consultation.doctor_id !== req.user.id) {
+      return res.status(404).json({ message: 'Consultation not found or unauthorized.' });
+    }
+
+    if (consultation.status !== 'result_ready' && consultation.status !== 'waiting_for_results') {
+      return res.status(400).json({ message: 'Consultation is not waiting for results.' });
+    }
+
+    // Mark doctor as busy
+    const doctor = await User.findByPk(req.user.id);
+    if (doctor) {
+      doctor.availability_status = 'busy';
+      await doctor.save();
+    }
+
+    // Update consultation status to in_progress
+    consultation.status = 'in_progress';
+    await consultation.save();
+
+    // Notify the patient via push notification / socket
+    const { sendPushNotification } = require('../utils/pushHelper');
+    await sendPushNotification(
+      consultation.patient_id,
+      'Doctor Resumed Case',
+      'The doctor has reviewed your results and resumed the consultation.',
+      'case_resumed',
+      '/patient'
+    );
+
+    if (global.io) {
+      global.io.emit('queue_update');
+    }
+
+    res.status(200).json({ message: 'Consultation resumed successfully.', consultation });
+  } catch (error) {
+    console.error('Error resuming consultation:', error);
+    res.status(500).json({ message: 'Server error resuming consultation.' });
   }
 };
