@@ -3,6 +3,65 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { sendPushNotification } = require('../utils/pushHelper');
 const { calculateSeverity } = require('../utils/severityCalculator');
+const { TRIAGE_REASONS, triageRoute } = require('../utils/triageRules');
+
+// ── Fee key resolver ──────────────────────────────────────────────────────────
+// Maps consultation type + specialty to the correct settings key.
+// Falls back to 'consultation_fee' (the legacy GP default) if no specific key exists.
+const SPECIALTY_FEE_KEYS = {
+  'General Practitioner': 'fee_gp',
+  'Psychiatrist':         'fee_psychiatrist',
+  'Dermatologist':        'fee_dermatologist',
+  'Cardiologist':         'fee_cardiologist',
+  'Internal Medicine':    'fee_internal_medicine',
+  'Pediatrician':         'fee_pediatrician',
+  'Gynecologist':         'fee_gynecologist',
+  'Pulmonologist':        'fee_pulmonologist',
+  'Neurologist':          'fee_neurologist',
+  'Orthopedic':           'fee_orthopedic',
+};
+
+const DEFAULT_FEES = {
+  fee_gp:               150,
+  fee_psychiatrist:     300,
+  fee_dermatologist:    250,
+  fee_cardiologist:     350,
+  fee_internal_medicine:280,
+  fee_pediatrician:     200,
+  fee_gynecologist:     250,
+  fee_pulmonologist:    280,
+  fee_neurologist:      320,
+  fee_orthopedic:       300,
+  consultation_fee:     100, // legacy fallback
+};
+
+/**
+ * Resolve the consultation fee for a given type + specialty.
+ * @param {'gp'|'specialist'} consultationType
+ * @param {string|null} targetSpecialty
+ * @returns {Promise<number>} fee in ETB
+ */
+async function resolveConsultationFee(consultationType, targetSpecialty) {
+  const { Setting } = require('../models');
+
+  let settingKey;
+  if (consultationType === 'specialist' && targetSpecialty && SPECIALTY_FEE_KEYS[targetSpecialty]) {
+    settingKey = SPECIALTY_FEE_KEYS[targetSpecialty];
+  } else {
+    // GP or unknown → use fee_gp, fall back to legacy consultation_fee
+    settingKey = 'fee_gp';
+  }
+
+  let setting = await Setting.findOne({ where: { key: settingKey } });
+
+  // If the specific key doesn't exist yet, try the legacy key
+  if (!setting) {
+    setting = await Setting.findOne({ where: { key: 'consultation_fee' } });
+  }
+
+  if (setting) return parseInt(setting.value, 10) || DEFAULT_FEES[settingKey] || 100;
+  return DEFAULT_FEES[settingKey] || 100;
+}
 
 // @desc    Request a new consultation (Join Priority Queue)
 // @route   POST /api/consultations
@@ -13,23 +72,74 @@ exports.requestConsultation = async (req, res) => {
       return res.status(403).json({ message: 'Only patients can request consultations' });
     }
 
-    const { symptoms_description, reason, report_url } = req.body;
+    const {
+      symptoms_description,
+      reason,
+      reason_for_visit,   // triage key from TRIAGE_REASONS (preferred)
+      report_url,
+      consultation_type,
+      target_specialty,
+    } = req.body;
 
-    if (!symptoms_description) {
-      return res.status(400).json({ message: 'Symptoms description is required.' });
+    // ── Triage routing ────────────────────────────────────────────────────────
+    // If the client sends a reason_for_visit key, derive type + specialty from
+    // the deterministic triage rules. The client may also override with an
+    // explicit consultation_type / target_specialty (e.g. GP override).
+    let type = consultation_type || 'gp';
+    let specialty = null;
+    let resolvedReason = reason;
+
+    if (reason_for_visit) {
+      const triageResult = triageRoute(reason_for_visit);
+      // Client-side GP override: if consultation_type is explicitly 'gp', honour it
+      if (!consultation_type) {
+        type = triageResult.doctorType;
+        specialty = triageResult.specialty;
+      } else {
+        type = consultation_type;
+        specialty = consultation_type === 'specialist' ? (target_specialty || triageResult.specialty) : null;
+      }
+      // Use the human-readable label as the stored reason if none provided
+      if (!resolvedReason) {
+        const rule = TRIAGE_REASONS.find(r => r.key === reason_for_visit);
+        resolvedReason = rule ? rule.label : reason_for_visit;
+      }
     }
 
-    const severity_level = calculateSeverity(reason || '', symptoms_description);
+    // Validate specialist type if direct specialist access
+    const VALID_SPECIALTIES = [
+      'General Practitioner',
+      'Psychiatrist', 'Dermatologist', 'Cardiologist', 'Internal Medicine',
+      'Pediatrician', 'Gynecologist', 'Pulmonologist', 'Neurologist', 'Orthopedic'
+    ];
+
+    if (type === 'specialist') {
+      if (!specialty && target_specialty) specialty = target_specialty;
+      if (!specialty || !VALID_SPECIALTIES.includes(specialty)) {
+        return res.status(400).json({ message: 'A valid specialist type is required for direct specialist access.' });
+      }
+    } else {
+      specialty = null; // ensure null for GP
+    }
+
+    // symptoms_description is optional when a triage reason is provided
+    const finalSymptoms = symptoms_description || resolvedReason || 'Not specified';
+
+    const severity_level = calculateSeverity(resolvedReason || '', finalSymptoms);
 
     const consultation = await Consultation.create({
       patient_id: req.user.id,
       doctor_id: null,
-      symptoms_description,
-      reason,
+      symptoms_description: finalSymptoms,
+      reason: resolvedReason,
+      reason_for_visit: reason_for_visit || null,
+      assigned_specialization: type === 'specialist' ? specialty : 'General Practitioner',
       report_url,
       status: 'pending',
       severity_level,
-      queue_status: 'waiting'
+      queue_status: 'waiting',
+      consultation_type: type,
+      target_specialty: specialty,
     });
 
     // Check if patient has an active subscription
@@ -52,8 +162,7 @@ exports.requestConsultation = async (req, res) => {
       expiresAt = activeSub.expires_at;
       paymentAmount = 0;
     } else {
-      const setting = await Setting.findOne({ where: { key: 'consultation_fee' } });
-      paymentAmount = setting ? parseInt(setting.value, 10) : 100;
+      paymentAmount = await resolveConsultationFee(type, specialty);
     }
 
     const referenceCode = 'TEL-' + crypto.randomBytes(3).toString('hex').toUpperCase();
@@ -67,12 +176,12 @@ exports.requestConsultation = async (req, res) => {
       expires_at: expiresAt,
     });
 
-    // Notify admins/system (No specific doctor assigned yet)
+    // Notify admins/system
     if (global.io) {
       global.io.emit('queue_update', { message: 'New patient joined the queue' });
     }
 
-    // Try to auto-assign a doctor if one is available
+    // Try to auto-assign a doctor
     exports.triggerAutoAssignment();
 
     res.status(201).json({
@@ -83,6 +192,13 @@ exports.requestConsultation = async (req, res) => {
     console.error('Request consultation error:', error);
     res.status(500).json({ message: 'Server error requesting consultation' });
   }
+};
+
+// @desc    Get triage rules (public — used by frontend to render the reason dropdown)
+// @route   GET /api/consultations/triage-rules
+// @access  Public
+exports.getTriageRules = (req, res) => {
+  res.status(200).json({ rules: TRIAGE_REASONS });
 };
 
 // @desc    Get all consultations
@@ -228,20 +344,9 @@ exports.getQueueStatus = async (req, res) => {
 // Internal function to auto-assign doctors
 exports.triggerAutoAssignment = async () => {
   try {
-    // Find all available doctors
-    let availableDoctors = await User.findAll({
-      where: { role: 'doctor', availability_status: 'available' }
-    });
+    const GP_SPECIALTY = 'General Practitioner';
 
-    if (availableDoctors.length === 0) {
-      // Fallback: If no one is explicitly available, try finding any verified doctor
-      availableDoctors = await User.findAll({
-        where: { role: 'doctor', is_verified: true }
-      });
-    }
-
-    if (availableDoctors.length === 0) return;
-
+    // Find all pending consultations with verified payment
     const pendingConsultations = await Consultation.findAll({
       where: { queue_status: 'waiting', status: 'pending' },
       include: [{
@@ -253,52 +358,91 @@ exports.triggerAutoAssignment = async () => {
 
     if (pendingConsultations.length === 0) return;
 
-    // Calculate workload for each available doctor
-    const doctorWorkloads = [];
-    for (const doc of availableDoctors) {
-      const activeCount = await Consultation.count({
-        where: {
-          doctor_id: doc.id,
-          status: { [Op.in]: ['assigned', 'in_progress'] }
-        }
-      });
-      doctorWorkloads.push({ doctor: doc, workload: activeCount });
-    }
-
-    // Sort consultations by Severity and Wait Time
+    // Sort by severity then wait time
     const severityRank = { 'high': 3, 'medium': 2, 'low': 1 };
     pendingConsultations.sort((a, b) => {
       const rankA = severityRank[a.severity_level] || 1;
       const rankB = severityRank[b.severity_level] || 1;
-      if (rankA !== rankB) return rankB - rankA; // Descending priority
-      return new Date(a.created_at) - new Date(b.created_at); // Ascending time (older first)
+      if (rankA !== rankB) return rankB - rankA;
+      return new Date(a.created_at) - new Date(b.created_at);
     });
 
-    // Assign them
-    for (let patIndex = 0; patIndex < pendingConsultations.length; patIndex++) {
-      // Sort doctors to find the least busy one
-      doctorWorkloads.sort((a, b) => a.workload - b.workload);
-      
-      const selectedEntry = doctorWorkloads[0];
-      const doctor = selectedEntry.doctor;
-      const consultation = pendingConsultations[patIndex];
+    for (const consultation of pendingConsultations) {
+      // Determine which specialty to look for
+      let requiredSpecialty = null;
+      if (consultation.consultation_type === 'specialist' && consultation.target_specialty) {
+        requiredSpecialty = consultation.target_specialty;
+      } else {
+        // GP consultation — route to General Practitioner
+        requiredSpecialty = GP_SPECIALTY;
+      }
 
-      // Assign
-      consultation.doctor_id = doctor.id;
+      // Find doctors with the required specialty who are available
+      let candidates = await User.findAll({
+        where: {
+          role: 'doctor',
+          specialty: requiredSpecialty,
+          availability_status: 'available',
+          is_verified: true,
+        }
+      });
+
+      // Fallback 1: any verified doctor with that specialty (regardless of availability_status)
+      if (candidates.length === 0) {
+        candidates = await User.findAll({
+          where: {
+            role: 'doctor',
+            specialty: requiredSpecialty,
+            is_verified: true,
+          }
+        });
+      }
+
+      // Fallback 2 (GP only): any available verified doctor if no GP found
+      if (candidates.length === 0 && consultation.consultation_type === 'gp') {
+        candidates = await User.findAll({
+          where: { role: 'doctor', availability_status: 'available', is_verified: true }
+        });
+      }
+
+      // Fallback 3: any verified doctor at all
+      if (candidates.length === 0) {
+        candidates = await User.findAll({
+          where: { role: 'doctor', is_verified: true }
+        });
+      }
+
+      if (candidates.length === 0) continue; // No doctor available for this consultation
+
+      // Pick the one with the least active workload
+      let selectedDoctor = null;
+      let minWorkload = Infinity;
+      for (const doc of candidates) {
+        const activeCount = await Consultation.count({
+          where: { doctor_id: doc.id, status: { [Op.in]: ['assigned', 'in_progress'] } }
+        });
+        if (activeCount < minWorkload) {
+          minWorkload = activeCount;
+          selectedDoctor = doc;
+        }
+      }
+
+      if (!selectedDoctor) continue;
+
+      consultation.doctor_id = selectedDoctor.id;
       consultation.status = 'assigned';
       consultation.queue_status = 'assigned';
       await consultation.save();
 
-      // Update local workload count so subsequent loop iterations balance correctly
-      selectedEntry.workload++;
+      // Auto-mark doctor as busy
+      await User.update({ availability_status: 'busy' }, { where: { id: selectedDoctor.id } });
 
-      // Notify
-      sendPushNotification(consultation.patient_id, 'Doctor Assigned', `Dr. ${doctor.name} has been assigned to your consultation.`, 'consultation', '/consultations').catch(()=>{});
-      sendPushNotification(doctor.id, 'New Patient', 'A new patient has been assigned to you.', 'consultation', '/consultations').catch(()=>{});
+      sendPushNotification(consultation.patient_id, 'Doctor Assigned', `Dr. ${selectedDoctor.name} has been assigned to your consultation.`, 'consultation', '/consultations').catch(() => {});
+      sendPushNotification(selectedDoctor.id, 'New Patient', 'A new patient has been assigned to you.', 'consultation', '/consultations').catch(() => {});
 
       if (global.io) {
-        global.io.to(`user_${consultation.patient_id}`).emit('doctor_assigned', { consultation_id: consultation.id, doctor_name: doctor.name });
-        global.io.to(`user_${doctor.id}`).emit('new_patient_assigned', { consultation_id: consultation.id });
+        global.io.to(`user_${consultation.patient_id}`).emit('doctor_assigned', { consultation_id: consultation.id, doctor_name: selectedDoctor.name });
+        global.io.to(`user_${selectedDoctor.id}`).emit('new_patient_assigned', { consultation_id: consultation.id });
         global.io.emit('queue_update', {});
       }
     }
@@ -330,16 +474,14 @@ exports.completeConsultation = async (req, res) => {
     consultation.queue_status = 'completed';
     await consultation.save();
 
-    // Free up doctor availability
+    // Auto-sync doctor availability based on remaining active workload
     const busyCount = await Consultation.count({
-      where: { doctor_id: req.user.id, status: { [Op.in]: ['pending', 'assigned'] } }
+      where: { doctor_id: req.user.id, status: { [Op.in]: ['assigned', 'in_progress', 'waiting_for_results'] } }
     });
-    if (busyCount === 0) {
-      await User.update(
-        { availability_status: 'available' },
-        { where: { id: req.user.id } }
-      );
-    }
+    await User.update(
+      { availability_status: busyCount > 0 ? 'busy' : 'available' },
+      { where: { id: req.user.id } }
+    );
 
     res.status(200).json({ message: 'Consultation completed successfully', consultation });
   } catch (error) {
@@ -546,5 +688,96 @@ exports.resumeConsultation = async (req, res) => {
   } catch (error) {
     console.error('Error resuming consultation:', error);
     res.status(500).json({ message: 'Server error resuming consultation.' });
+  }
+};
+
+// @desc    GP refers patient to a specialist (creates a new linked consultation)
+// @route   POST /api/consultations/:id/refer
+// @access  Private (Doctor)
+exports.referToSpecialist = async (req, res) => {
+  try {
+    if (req.user.role !== 'doctor') {
+      return res.status(403).json({ message: 'Only doctors can refer patients.' });
+    }
+
+    const VALID_SPECIALTIES = [
+      'Psychiatrist', 'Dermatologist', 'Cardiologist', 'Internal Medicine',
+      'Pediatrician', 'Gynecologist', 'Pulmonologist', 'Neurologist', 'Orthopedic'
+    ];
+
+    const { target_specialty, referral_notes } = req.body;
+
+    if (!target_specialty || !VALID_SPECIALTIES.includes(target_specialty)) {
+      return res.status(400).json({ message: 'A valid specialist type is required.' });
+    }
+
+    const original = await Consultation.findByPk(req.params.id, {
+      include: [{ model: Payment, as: 'Payment' }]
+    });
+
+    if (!original) return res.status(404).json({ message: 'Consultation not found.' });
+    if (original.doctor_id !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized for this consultation.' });
+    }
+
+    // Create the specialist consultation linked to the original
+    const referral = await Consultation.create({
+      patient_id: original.patient_id,
+      doctor_id: null,
+      symptoms_description: referral_notes || original.symptoms_description,
+      reason: `Referred by GP for ${target_specialty}`,
+      status: 'pending',
+      severity_level: original.severity_level,
+      queue_status: 'waiting',
+      consultation_type: 'specialist',
+      target_specialty,
+      referred_by_id: original.id,
+    });
+
+    // Reuse the existing verified payment if available (same subscription covers it)
+    const { Setting } = require('../models');
+    let paymentStatus = 'pending';
+    let expiresAt = null;
+    let paymentAmount = null;
+
+    if (original.Payment && original.Payment.status === 'verified' && original.Payment.expires_at && new Date(original.Payment.expires_at) > new Date()) {
+      paymentStatus = 'verified';
+      expiresAt = original.Payment.expires_at;
+      paymentAmount = 0;
+    } else {
+      paymentAmount = await resolveConsultationFee('specialist', target_specialty);
+    }
+
+    const crypto = require('crypto');
+    const referenceCode = 'REF-' + crypto.randomBytes(3).toString('hex').toUpperCase();
+
+    await Payment.create({
+      consultation_id: referral.id,
+      patient_id: original.patient_id,
+      reference_code: referenceCode,
+      status: paymentStatus,
+      amount: paymentAmount,
+      expires_at: expiresAt,
+    });
+
+    // Notify patient
+    await sendPushNotification(
+      original.patient_id,
+      'Referred to Specialist',
+      `Your GP has referred you to a ${target_specialty}. A new consultation has been created.`,
+      'referral',
+      '/consultations'
+    );
+
+    // Trigger auto-assignment for the new specialist consultation
+    exports.triggerAutoAssignment();
+
+    res.status(201).json({
+      message: `Patient referred to ${target_specialty} successfully.`,
+      referral,
+    });
+  } catch (error) {
+    console.error('Refer to specialist error:', error);
+    res.status(500).json({ message: 'Server error creating referral.' });
   }
 };

@@ -1,4 +1,4 @@
-const { User, Availability, Testimonial } = require('../models');
+const { User, Availability, Testimonial, Consultation } = require('../models');
 const { Op } = require('sequelize');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
@@ -36,7 +36,8 @@ exports.getUsers = async (req, res) => {
 // @access  Public/Private (Patient)
 exports.getVerifiedDoctors = async (req, res) => {
   try {
-    const { specialty } = req.query;
+    // Accept both ?specialty= (legacy) and ?specialization= (triage system)
+    const specialty = req.query.specialty || req.query.specialization;
     let whereClause = {
       role: 'doctor',
       is_verified: true
@@ -62,8 +63,8 @@ exports.getVerifiedDoctors = async (req, res) => {
               [Op.gte]: today
             }
           },
-          required: false, // Use left join so we get all doctors even without availabilities
-          attributes: ['id'] // just need to check if exists/count
+          required: false,
+          attributes: ['id']
         },
         {
           model: Testimonial,
@@ -75,17 +76,51 @@ exports.getVerifiedDoctors = async (req, res) => {
       order: [['name', 'ASC']]
     });
 
-    const doctorsWithRatings = doctors.map(doc => {
+    // For each doctor, count their active queue (pending + assigned consultations)
+    const { Consultation } = require('../models');
+    const doctorsWithRatings = await Promise.all(doctors.map(async (doc) => {
       const docJSON = doc.toJSON();
       const testimonials = docJSON.ReceivedTestimonials || [];
       const totalReviews = testimonials.length;
       const sum = testimonials.reduce((acc, curr) => acc + curr.rating, 0);
       const averageRating = totalReviews > 0 ? (sum / totalReviews).toFixed(1) : 0;
-      
-      delete docJSON.ReceivedTestimonials; // keep payload small
+
+      // Count active patients in this doctor's queue
+      const activeQueueCount = await Consultation.count({
+        where: {
+          doctor_id: doc.id,
+          status: { [Op.in]: ['assigned', 'in_progress', 'waiting_for_results'] }
+        }
+      });
+
+      // Count patients waiting to be assigned to this specialty
+      const waitingCount = await Consultation.count({
+        where: {
+          queue_status: 'waiting',
+          status: 'pending',
+          ...(docJSON.specialty ? { target_specialty: docJSON.specialty } : {})
+        }
+      });
+
+      // Estimated wait: 15 mins per active patient ahead
+      const estimatedWaitMins = activeQueueCount * 15;
+
+      delete docJSON.ReceivedTestimonials;
       docJSON.averageRating = Number(averageRating);
       docJSON.totalReviews = totalReviews;
+      docJSON.activeQueueCount = activeQueueCount;
+      docJSON.waitingCount = waitingCount;
+      docJSON.estimatedWaitMins = estimatedWaitMins;
       return docJSON;
+    }));
+
+    // Sort: available first, then busy, then offline
+    const statusOrder = { available: 0, busy: 1, offline: 2 };
+    doctorsWithRatings.sort((a, b) => {
+      const sa = statusOrder[a.availability_status] ?? 3;
+      const sb = statusOrder[b.availability_status] ?? 3;
+      if (sa !== sb) return sa - sb;
+      return a.activeQueueCount - b.activeQueueCount; // within same status, least busy first
     });
 
     res.status(200).json(doctorsWithRatings);
@@ -390,82 +425,52 @@ exports.updateUser = async (req, res) => {
   }
 };
 
-// @desc    Toggle doctor availability status
-// @route   PUT /api/users/availability
-// @access  Private (Doctor)
-exports.toggleAvailability = async (req, res) => {
-  try {
-    const user = await User.findByPk(req.user.id);
-    if (!user || user.role !== 'doctor') {
-      return res.status(403).json({ message: 'Only doctors can toggle availability' });
-    }
-
-    const { status } = req.body; // 'available', 'busy', 'offline'
-    if (!['available', 'busy', 'offline'].includes(status)) {
-      return res.status(400).json({ message: 'Invalid status' });
-    }
-
-    user.availability_status = status;
-    await user.save();
-
-    const consultationController = require('./consultationController');
-    const { Consultation } = require('../models');
-
-    if (status === 'available') {
-      // If they became available, trigger auto-assignment
-      if (consultationController.triggerAutoAssignment) {
-        consultationController.triggerAutoAssignment();
-      }
-    } else if (status === 'offline' || status === 'busy') {
-      // Reassign patients that were just assigned but not yet started
-      const pendingConsultations = await Consultation.findAll({
-        where: {
-          doctor_id: user.id,
-          status: 'assigned' // Note: we do not reassign 'in_progress' as chat has already started
-        }
-      });
-
-      if (pendingConsultations.length > 0) {
-        for (const consultation of pendingConsultations) {
-          consultation.doctor_id = null;
-          consultation.status = 'pending';
-          consultation.queue_status = 'waiting';
-          await consultation.save();
-          
-          if (global.io) {
-            global.io.emit('queue_update', { message: 'Patient returned to queue due to doctor unavailability' });
-            global.io.to(`user_${consultation.patient_id}`).emit('doctor_unavailable', { consultation_id: consultation.id });
-          }
-        }
-        
-        // Re-trigger auto-assignment for these newly pending patients
-        if (consultationController.triggerAutoAssignment) {
-          consultationController.triggerAutoAssignment();
-        }
-      }
-    }
-
-    res.status(200).json({
-      message: `Status updated to ${status}`,
-      availability_status: user.availability_status
-    });
-  } catch (error) {
-    console.error('Toggle availability error:', error);
-    res.status(500).json({ message: 'Server error updating availability' });
-  }
-};
-
-// @desc    Get doctor availability status
+// @desc    Get doctor availability status (auto-computed from active consultations)
 // @route   GET /api/users/availability
 // @access  Private (Doctor)
 exports.getAvailabilityStatus = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.id, { attributes: ['availability_status'] });
+    const user = await User.findByPk(req.user.id, {
+      attributes: ['id', 'role', 'is_verified', 'availability_status']
+    });
     if (!user) return res.status(404).json({ message: 'User not found' });
-    
-    res.status(200).json({ availability_status: user.availability_status });
+
+    // Auto-derive status from active workload
+    const activeCount = await Consultation.count({
+      where: {
+        doctor_id: req.user.id,
+        status: { [Op.in]: ['assigned', 'in_progress', 'waiting_for_results'] }
+      }
+    });
+
+    let computedStatus;
+    if (!user.is_verified) {
+      computedStatus = 'offline';
+    } else if (activeCount > 0) {
+      computedStatus = 'busy';
+    } else {
+      computedStatus = 'available';
+    }
+
+    // Keep the DB field in sync so the patient-facing doctor list stays accurate
+    if (user.availability_status !== computedStatus) {
+      await User.update({ availability_status: computedStatus }, { where: { id: req.user.id } });
+    }
+
+    res.status(200).json({
+      availability_status: computedStatus,
+      active_consultations: activeCount,
+    });
   } catch (error) {
     console.error('Get availability error:', error);
     res.status(500).json({ message: 'Server error fetching availability' });
   }
+};
+
+// @desc    (Deprecated — availability is now auto-computed) kept for backward compat
+// @route   PUT /api/users/availability
+// @access  Private (Doctor)
+exports.toggleAvailability = async (req, res) => {
+  // Redirect to the computed status — manual override is no longer supported
+  return exports.getAvailabilityStatus(req, res);
 };

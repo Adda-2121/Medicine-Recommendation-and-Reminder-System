@@ -42,6 +42,7 @@ export const AuthProvider = ({ children }) => {
         name, email, password, role, phone_number,
         document, selfie, id_document, degree_document, experience_document,
         license_number, license_issuing_authority, license_expiry_date,
+        specialty,
         degree, university_name, graduation_year, experience_years, current_workplace,
         age, sex
       } = userData;
@@ -61,6 +62,7 @@ export const AuthProvider = ({ children }) => {
         data.append('license_number', license_number);
         data.append('license_issuing_authority', license_issuing_authority);
         data.append('license_expiry_date', license_expiry_date);
+        if (specialty) data.append('specialty', specialty);
         if (degree) data.append('degree', degree);
         if (university_name) data.append('university_name', university_name);
         if (graduation_year) data.append('graduation_year', graduation_year);

@@ -18,6 +18,7 @@ const testimonialRoutes = require('./routes/testimonialRoutes');
 const drugRoutes = require('./routes/drugRoutes');
 const prescriptionRoutes = require('./routes/prescriptionRoutes');
 const settingRoutes = require('./routes/settingRoutes');
+const triageRoutes = require('./routes/triageRoutes');
 
 // Init Cron Jobs
 require('./utils/reminderCron');
@@ -48,6 +49,7 @@ app.use('/api/testimonials', testimonialRoutes);
 app.use('/api/drugs', drugRoutes);
 app.use('/api/prescriptions', prescriptionRoutes);
 app.use('/api/settings', settingRoutes);
+app.use('/api/triage', triageRoutes);
 
 // Basic route
 app.get('/api/health', (req, res) => {

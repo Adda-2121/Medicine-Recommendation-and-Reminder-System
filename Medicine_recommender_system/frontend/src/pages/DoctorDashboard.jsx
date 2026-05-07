@@ -18,7 +18,6 @@ import {
   AlertTriangle,
   XCircle,
   ShieldCheck,
-  WifiOff,
   Loader2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -44,31 +43,12 @@ const DoctorDashboard = () => {
   const [loadingReviews, setLoadingReviews] = useState(false);
 
   const [modalConfig, setModalConfig] = useState({ isOpen: false, slotId: null });
-  const [currentStatus, setCurrentStatus] = useState('offline');
-  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
-
-  // Status-change confirmation modal
-  const [statusModal, setStatusModal] = useState({ isOpen: false, targetStatus: null, pendingCount: 0 });
-  const [statusChanging, setStatusChanging] = useState(false);
-
-
 
   useEffect(() => {
     fetchConsultations();
     fetchAvailabilities();
     fetchReviews();
-    fetchStatus();
   }, []);
-
-  const fetchStatus = async () => {
-    try {
-      const res = await api.get('/users/availability');
-      setCurrentStatus(res.data.availability_status || 'offline');
-    } catch (err) {
-      console.error('Failed to fetch status', err);
-    }
-  };
-
 
   const fetchReviews = async () => {
     try {
@@ -107,31 +87,6 @@ const DoctorDashboard = () => {
     }
   };
 
-  
-  const handleStatusChange = async (newStatus) => {
-    setIsStatusDropdownOpen(false);
-    const pendingCount = consultations.filter(c => c.status === 'assigned').length;
-    if ((newStatus === 'offline' || newStatus === 'busy') && pendingCount > 0) {
-      setStatusModal({ isOpen: true, targetStatus: newStatus, pendingCount });
-      return;
-    }
-    await applyStatusChange(newStatus);
-  };
-
-  const applyStatusChange = async (newStatus) => {
-    setStatusChanging(true);
-    try {
-      const res = await api.put('/users/availability', { status: newStatus });
-      setCurrentStatus(res.data.availability_status);
-      toast.success(`Status updated to ${newStatus}`);
-      fetchConsultations();
-    } catch (err) {
-      toast.error('Failed to update status');
-    } finally {
-      setStatusChanging(false);
-    }
-  };
-
   const handleAddSlot = async (e) => {
     e.preventDefault();
     if (!newSlot.date || !newSlot.start_time || !newSlot.end_time) return;
@@ -165,13 +120,29 @@ const DoctorDashboard = () => {
     }
   };
 
-  const handleCompleteConsultation = async (id) => {
+  // ── Referral state ────────────────────────────────────────────────────────
+  const SPECIALIST_TYPES = [
+    'Psychiatrist', 'Dermatologist', 'Cardiologist', 'Internal Medicine',
+    'Pediatrician', 'Gynecologist', 'Pulmonologist', 'Neurologist', 'Orthopedic'
+  ];
+  const [referralModal, setReferralModal] = useState({ isOpen: false, consultationId: null });
+  const [referralForm, setReferralForm] = useState({ target_specialty: '', referral_notes: '' });
+  const [referralLoading, setReferralLoading] = useState(false);
+
+  const handleReferSubmit = async (e) => {
+    e.preventDefault();
+    if (!referralForm.target_specialty) return;
+    setReferralLoading(true);
     try {
-      await api.put(`/consultations/${id}/complete`);
-      toast.success('Consultation marked as completed. Patient can now leave feedback.');
+      await api.post(`/consultations/${referralModal.consultationId}/refer`, referralForm);
+      toast.success(`Patient referred to ${referralForm.target_specialty} successfully.`);
+      setReferralModal({ isOpen: false, consultationId: null });
+      setReferralForm({ target_specialty: '', referral_notes: '' });
       fetchConsultations();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to complete consultation');
+      toast.error(err.response?.data?.message || 'Failed to create referral');
+    } finally {
+      setReferralLoading(false);
     }
   };
 
@@ -211,46 +182,6 @@ const DoctorDashboard = () => {
         </div>
 
         <div className="flex items-center space-x-4">
-          {/* Professional Status Dropdown */}
-          <div className="relative">
-            <button 
-              onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
-              className="flex items-center space-x-2 bg-white px-3 py-1.5 rounded-full border border-slate-200 shadow-sm hover:bg-slate-50 transition"
-            >
-              <span className={`w-2.5 h-2.5 rounded-full ${currentStatus === 'available' ? 'bg-emerald-500' : currentStatus === 'busy' ? 'bg-amber-500' : 'bg-slate-400'}`}></span>
-              <span className="text-sm font-medium text-slate-700 capitalize">{currentStatus}</span>
-              <svg className={`w-4 h-4 text-slate-400 transition-transform ${isStatusDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-            </button>
-            
-            {isStatusDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-100 overflow-hidden z-50">
-                <div className="p-1">
-                  <button 
-                    onClick={() => handleStatusChange('available')}
-                    className={`w-full text-left px-3 py-2 text-sm rounded-lg flex items-center space-x-2 transition-colors ${currentStatus === 'available' ? 'bg-slate-50 font-semibold' : 'hover:bg-slate-50'}`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <span className="text-slate-700">Available</span>
-                  </button>
-                  <button 
-                    onClick={() => handleStatusChange('busy')}
-                    className={`w-full text-left px-3 py-2 text-sm rounded-lg flex items-center space-x-2 transition-colors ${currentStatus === 'busy' ? 'bg-slate-50 font-semibold' : 'hover:bg-slate-50'}`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                    <span className="text-slate-700">Busy</span>
-                  </button>
-                  <button 
-                    onClick={() => handleStatusChange('offline')}
-                    className={`w-full text-left px-3 py-2 text-sm rounded-lg flex items-center space-x-2 transition-colors ${currentStatus === 'offline' ? 'bg-slate-50 font-semibold' : 'hover:bg-slate-50'}`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                    <span className="text-slate-700">Offline</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
           <button className="p-2 text-slate-400 hover:text-primary-600 bg-white rounded-full border border-slate-200 shadow-sm relative transition-colors">
             <Bell size={20} />
           </button>
@@ -436,12 +367,13 @@ const DoctorDashboard = () => {
                                     <Activity size={13} className="mr-1" /> Resume Case
                                   </button>
                                 )}
-                                {c.status === 'in_progress' && (
+                                {/* Refer to Specialist — only for GP doctors on active consultations */}
+                                {(c.status === 'in_progress' || c.status === 'assigned') && user?.specialty === 'General Practitioner' && (
                                   <button
-                                    onClick={() => handleCompleteConsultation(c.id)}
-                                    className="bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 px-3 py-1.5 rounded-md transition-all shadow-sm text-xs font-bold flex items-center"
+                                    onClick={() => setReferralModal({ isOpen: true, consultationId: c.id })}
+                                    className="bg-violet-50 border border-violet-200 text-violet-700 hover:bg-violet-100 px-3 py-1.5 rounded-md transition-all shadow-sm text-xs font-bold flex items-center"
                                   >
-                                    <CheckCircle size={13} className="mr-1" /> Complete
+                                    <ClipboardList size={13} className="mr-1" /> Refer
                                   </button>
                                 )}
                                 {(c.status === 'in_progress' || c.status === 'assigned') && (
@@ -683,67 +615,57 @@ const DoctorDashboard = () => {
         isDanger={true}
       />
 
-      {/* Status-change confirmation modal */}
-      {statusModal.isOpen && (
+      {/* Referral Modal */}
+      {referralModal.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-sm bg-slate-900/60">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-fadeIn" role="dialog" aria-modal="true">
-            {/* Header */}
-            <div className="px-6 pt-6 pb-4 flex items-start gap-4">
-              <div className={`shrink-0 flex items-center justify-center h-10 w-10 rounded-full ${statusModal.targetStatus === 'offline' ? 'bg-slate-100' : 'bg-amber-100'}`}>
-                {statusModal.targetStatus === 'offline'
-                  ? <WifiOff size={20} className="text-slate-500" />
-                  : <Clock size={20} className="text-amber-600" />
-                }
+            <div className="px-6 pt-6 pb-4 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Refer Patient to Specialist</h3>
+                <p className="text-xs text-slate-500 mt-0.5">A new specialist consultation will be created for this patient.</p>
               </div>
-              <div className="flex-1">
-                <h3 className="text-base font-bold text-slate-900 capitalize">
-                  Set status to "{statusModal.targetStatus}"?
-                </h3>
-                <p className="mt-1 text-sm text-slate-500 leading-relaxed">
-                  You currently have{' '}
-                  <span className="font-semibold text-slate-700">{statusModal.pendingCount} pending patient{statusModal.pendingCount !== 1 ? 's' : ''}</span>{' '}
-                  waiting to be seen. Switching to{' '}
-                  <span className="font-semibold capitalize">{statusModal.targetStatus}</span>{' '}
-                  will reassign {statusModal.pendingCount !== 1 ? 'them' : 'this patient'} to another available doctor.
-                </p>
+              <button onClick={() => setReferralModal({ isOpen: false, consultationId: null })} className="text-slate-400 hover:text-slate-600 text-xl font-bold leading-none">&times;</button>
+            </div>
+            <form onSubmit={handleReferSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Specialist Type <span className="text-red-500">*</span></label>
+                <select
+                  required
+                  value={referralForm.target_specialty}
+                  onChange={e => setReferralForm(prev => ({ ...prev, target_specialty: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white"
+                >
+                  <option value="" disabled>Select specialist type…</option>
+                  {SPECIALIST_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
               </div>
-            </div>
-
-            {/* Warning box */}
-            <div className="mx-6 mb-4 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-2">
-              <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-700 leading-relaxed">
-                This action affects active patients. Make sure you have handed off any ongoing consultations before going {statusModal.targetStatus}.
-              </p>
-            </div>
-
-            {/* Footer */}
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-row-reverse gap-3">
-              <button
-                type="button"
-                disabled={statusChanging}
-                onClick={async () => {
-                  const t = statusModal.targetStatus;
-                  setStatusModal({ isOpen: false, targetStatus: null, pendingCount: 0 });
-                  await applyStatusChange(t);
-                }}
-                className={`px-5 py-2 rounded-lg text-sm font-bold text-white transition shadow-sm flex items-center gap-2 disabled:opacity-70
-                  ${statusModal.targetStatus === 'offline' ? 'bg-slate-600 hover:bg-slate-700' : 'bg-amber-500 hover:bg-amber-600'}`}
-              >
-                {statusChanging && <Loader2 size={14} className="animate-spin" />}
-                Yes, set {statusModal.targetStatus}
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatusModal({ isOpen: false, targetStatus: null, pendingCount: 0 })}
-                className="px-5 py-2 rounded-lg text-sm font-medium text-slate-700 border border-slate-300 bg-white hover:bg-slate-50 transition"
-              >
-                Keep current status
-              </button>
-            </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Referral Notes</label>
+                <textarea
+                  rows={3}
+                  value={referralForm.referral_notes}
+                  onChange={e => setReferralForm(prev => ({ ...prev, referral_notes: e.target.value }))}
+                  placeholder="Clinical summary, reason for referral, relevant findings…"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-400"
+                />
+              </div>
+              <div className="flex flex-row-reverse gap-3 pt-2">
+                <button type="submit" disabled={referralLoading || !referralForm.target_specialty}
+                  className="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm font-bold transition disabled:opacity-60 flex items-center gap-2">
+                  {referralLoading && <Loader2 size={14} className="animate-spin" />}
+                  Create Referral
+                </button>
+                <button type="button" onClick={() => setReferralModal({ isOpen: false, consultationId: null })}
+                  className="px-5 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition">
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
+
+      {/* Status-change confirmation modal removed — availability is now auto-computed */}
     </div>
   );
 };

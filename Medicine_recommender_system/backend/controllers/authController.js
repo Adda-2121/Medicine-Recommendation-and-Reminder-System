@@ -146,7 +146,7 @@ exports.verifyEmailOtp = exports.verifyOtp;
 // @access  Public
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, role, phone_number, age, sex, license_number, license_issuing_authority, license_expiry_date, degree, university_name, graduation_year, experience_years, current_workplace } = req.body;
+    const { name, email, password, role, phone_number, age, sex, license_number, license_issuing_authority, license_expiry_date, degree, university_name, graduation_year, experience_years, current_workplace, specialty } = req.body;
 
     // Validation
     if (/\d/.test(name)) {
@@ -229,6 +229,7 @@ exports.register = async (req, res) => {
       userPayload.graduation_year = graduation_year;
       userPayload.experience_years = experience_years || null;
       userPayload.current_workplace = current_workplace || null;
+      userPayload.specialty = specialty || null;
       
       userPayload.verification_document = req.files['document'][0].path;
       userPayload.selfie_document = req.files['selfie'][0].path;

@@ -1045,18 +1045,40 @@ const MonitoringTab = () => {
 };
 
 const SettingsTab = () => {
-  const [fee, setFee] = useState('');
+  const [fees, setFees] = useState({});
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState(null); // key being saved
+
+  const FEE_CONFIG = [
+    { key: 'fee_gp',                label: 'General Practitioner (GP)', icon: '🩺', group: 'GP' },
+    { key: 'fee_psychiatrist',      label: 'Psychiatrist',              icon: '🧠', group: 'Specialists' },
+    { key: 'fee_dermatologist',     label: 'Dermatologist',             icon: '🔬', group: 'Specialists' },
+    { key: 'fee_cardiologist',      label: 'Cardiologist',              icon: '❤️', group: 'Specialists' },
+    { key: 'fee_internal_medicine', label: 'Internal Medicine',         icon: '🏥', group: 'Specialists' },
+    { key: 'fee_pediatrician',      label: 'Pediatrician',              icon: '👶', group: 'Specialists' },
+    { key: 'fee_gynecologist',      label: 'Gynecologist',              icon: '🌸', group: 'Specialists' },
+    { key: 'fee_pulmonologist',     label: 'Pulmonologist',             icon: '🫁', group: 'Specialists' },
+    { key: 'fee_neurologist',       label: 'Neurologist',               icon: '🧬', group: 'Specialists' },
+    { key: 'fee_orthopedic',        label: 'Orthopedic',                icon: '🦴', group: 'Specialists' },
+  ];
+
+  const DEFAULTS = {
+    fee_gp: '150', fee_psychiatrist: '300', fee_dermatologist: '250',
+    fee_cardiologist: '350', fee_internal_medicine: '280', fee_pediatrician: '200',
+    fee_gynecologist: '250', fee_pulmonologist: '280', fee_neurologist: '320', fee_orthopedic: '300',
+  };
 
   useEffect(() => {
     const fetchSettings = async () => {
       try {
         const res = await api.get('/settings');
-        const feeSetting = res.data.find(s => s.key === 'consultation_fee');
-        if (feeSetting) {
-          setFee(feeSetting.value);
-        }
+        const map = {};
+        res.data.forEach(s => { map[s.key] = s.value; });
+        // Fill in defaults for any missing keys
+        FEE_CONFIG.forEach(({ key }) => {
+          if (!map[key]) map[key] = DEFAULTS[key] || '100';
+        });
+        setFees(map);
       } catch (err) {
         console.error('Failed to fetch settings', err);
       } finally {
@@ -1066,62 +1088,128 @@ const SettingsTab = () => {
     fetchSettings();
   }, []);
 
-  const handleSave = async (e) => {
-    e.preventDefault();
-    setSaving(true);
+  const handleSave = async (key) => {
+    setSaving(key);
     try {
-      await api.put('/settings/consultation_fee', { value: fee });
-      toast.success('Consultation fee updated successfully');
+      await api.put(`/settings/${key}`, { value: fees[key] });
+      toast.success('Fee updated successfully');
     } catch (err) {
-      toast.error('Failed to update consultation fee');
+      toast.error('Failed to update fee');
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   };
 
-  return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative max-w-2xl">
-      <div className="mb-6">
-        <h3 className="font-semibold text-xl text-slate-800">Platform Settings</h3>
-        <p className="text-slate-500 text-sm mt-1">Configure global application settings and pricing.</p>
-      </div>
+  const handleSaveAll = async () => {
+    setSaving('all');
+    try {
+      await Promise.all(
+        FEE_CONFIG.map(({ key }) => api.put(`/settings/${key}`, { value: fees[key] }))
+      );
+      toast.success('All consultation fees saved successfully');
+    } catch (err) {
+      toast.error('Failed to save some fees');
+    } finally {
+      setSaving(null);
+    }
+  };
 
-      {loading ? (
-        <div className="animate-pulse h-10 bg-slate-200 rounded w-full"></div>
-      ) : (
-        <form onSubmit={handleSave} className="space-y-6">
-          <div className="bg-slate-50 p-5 rounded-lg border border-slate-200">
-            <h4 className="font-semibold text-slate-700 mb-4 border-b border-slate-200 pb-2">Consultation Pricing</h4>
+  const gpFees = FEE_CONFIG.filter(f => f.group === 'GP');
+  const specialistFees = FEE_CONFIG.filter(f => f.group === 'Specialists');
+
+  return (
+    <div className="space-y-6 max-w-3xl">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <div className="mb-6">
+          <h3 className="font-semibold text-xl text-slate-800">Platform Settings</h3>
+          <p className="text-slate-500 text-sm mt-1">Configure consultation fees per doctor type. Patients pay these amounts via Chapa to unlock a 1-week consultation.</p>
+        </div>
+
+        {loading ? (
+          <div className="animate-pulse space-y-3">
+            {[1,2,3,4].map(i => <div key={i} className="h-12 bg-slate-100 rounded-lg" />)}
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* GP Section */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Default Consultation Fee (ETB)
-              </label>
-              <p className="text-xs text-slate-500 mb-3">This is the amount patients will pay via Chapa to unlock a 1-week consultation subscription.</p>
-              <div className="flex items-center space-x-3">
-                <input
-                  type="number"
-                  min="0"
-                  required
-                  className="w-48 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white text-lg font-bold text-slate-800"
-                  value={fee}
-                  onChange={(e) => setFee(e.target.value)}
-                />
-                <span className="text-slate-500 font-medium">Birr</span>
+              <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-primary-500 inline-block"></span>
+                General Practitioner
+              </h4>
+              {gpFees.map(({ key, label, icon }) => (
+                <div key={key} className="flex items-center gap-4 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
+                  <span className="text-xl w-8 text-center">{icon}</span>
+                  <span className="flex-1 text-sm font-medium text-slate-700">{label}</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" min="0" step="1"
+                      value={fees[key] || ''}
+                      onChange={e => setFees(prev => ({ ...prev, [key]: e.target.value }))}
+                      className="w-28 px-3 py-1.5 border border-slate-300 rounded-lg text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white text-right"
+                    />
+                    <span className="text-slate-500 text-sm font-medium w-8">ETB</span>
+                    <button
+                      type="button"
+                      onClick={() => handleSave(key)}
+                      disabled={saving === key}
+                      className="px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold rounded-lg transition disabled:opacity-60 min-w-[60px]"
+                    >
+                      {saving === key ? '...' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Specialists Section */}
+            <div>
+              <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block"></span>
+                Specialist Consultation Fees
+              </h4>
+              <div className="space-y-2">
+                {specialistFees.map(({ key, label, icon }) => (
+                  <div key={key} className="flex items-center gap-4 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
+                    <span className="text-xl w-8 text-center">{icon}</span>
+                    <span className="flex-1 text-sm font-medium text-slate-700">{label}</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number" min="0" step="1"
+                        value={fees[key] || ''}
+                        onChange={e => setFees(prev => ({ ...prev, [key]: e.target.value }))}
+                        className="w-28 px-3 py-1.5 border border-slate-300 rounded-lg text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-right"
+                      />
+                      <span className="text-slate-500 text-sm font-medium w-8">ETB</span>
+                      <button
+                        type="button"
+                        onClick={() => handleSave(key)}
+                        disabled={saving === key}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition disabled:opacity-60 min-w-[60px]"
+                      >
+                        {saving === key ? '...' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
 
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={saving}
-              className="bg-primary-600 text-white px-6 py-2.5 rounded-md hover:bg-primary-700 transition font-bold shadow-sm disabled:opacity-70"
-            >
-              {saving ? 'Saving...' : 'Save Settings'}
-            </button>
+            {/* Save All */}
+            <div className="flex justify-between items-center pt-4 border-t border-slate-200">
+              <p className="text-xs text-slate-400">Changes take effect immediately for new consultations.</p>
+              <button
+                type="button"
+                onClick={handleSaveAll}
+                disabled={saving === 'all'}
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition shadow-sm disabled:opacity-70 text-sm"
+              >
+                {saving === 'all' ? 'Saving all...' : 'Save All Fees'}
+              </button>
+            </div>
           </div>
-        </form>
-      )}
+        )}
+      </div>
     </div>
   );
 };
@@ -1189,7 +1277,7 @@ const SpecialistsTab = () => {
       setShowForm(false);
       fetchData();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to register specialist');
+      setError(err.response?.data?.message || 'Failed to register laboratorist/radiologist');
     } finally {
       setFormLoading(false);
     }
@@ -1205,7 +1293,7 @@ const SpecialistsTab = () => {
       fetchData();
       setModalConfig({ isOpen: false, specialistId: null });
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to remove specialist. Ensure they have no dependent records.');
+      toast.error(err.response?.data?.message || 'Failed to remove laboratorist/radiologist. Ensure they have no dependent records.');
     }
   };
 
@@ -1224,11 +1312,11 @@ const SpecialistsTab = () => {
     setEditSpecLoading(true);
     try {
       await api.put(`/users/${editSpec.id}`, editSpecForm);
-      toast.success('Specialist updated successfully');
+      toast.success('Laboratorist/Radiologist updated successfully');
       setEditSpec(null);
       fetchData();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to update specialist');
+      toast.error(err.response?.data?.message || 'Failed to update laboratorist/radiologist');
     } finally {
       setEditSpecLoading(false);
     }
@@ -1245,20 +1333,20 @@ const SpecialistsTab = () => {
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h3 className="font-semibold text-xl text-slate-800">Specialist Management</h3>
+          <h3 className="font-semibold text-xl text-slate-800">Laboratorists / Radiologists Management</h3>
           <p className="text-slate-500 text-sm mt-1">Register new laboratory technicians and radiologists.</p>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
           className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 transition font-medium text-sm flex items-center shadow-sm"
         >
-          {showForm ? 'Cancel' : '+ Register Specialist'}
+          {showForm ? 'Cancel' : '+ Register Laboratorists / Radiologists'}
         </button>
       </div>
 
       {showForm && (
         <div className="bg-slate-50 p-6 rounded-lg border border-slate-200 mb-8 max-w-3xl">
-          <h4 className="font-bold text-slate-800 mb-4 border-b border-slate-200 pb-2">Specialist Registration</h4>
+          <h4 className="font-bold text-slate-800 mb-4 border-b border-slate-200 pb-2">Laboratorists / Radiologists Registration</h4>
           {error && <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm mb-4 border border-red-200">{error}</div>}
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -1346,7 +1434,7 @@ const SpecialistsTab = () => {
           <table className="min-w-full divide-y divide-slate-200">
             <thead className="bg-slate-50">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Specialist Details</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Staff Details</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Role & Capabilities</th>
                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -1390,12 +1478,12 @@ const SpecialistsTab = () => {
           <div className="bg-white p-4 rounded-full inline-block mb-4 shadow-sm border border-slate-100">
             <Activity className="text-primary-400" size={32} />
           </div>
-          <p className="text-xl text-slate-700 font-bold mb-1">No specialists registered yet</p>
+          <p className="text-xl text-slate-700 font-bold mb-1">No laboratorists or radiologists registered yet</p>
           <p className="text-slate-500 max-w-sm mx-auto">Register lab technicians and radiologists here.</p>
         </div>
       )}
 
-      {/* Edit Specialist Modal */}
+      {/* Edit Laboratorists / Radiologists Modal */}
       {editSpec && (
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
@@ -1449,8 +1537,8 @@ const SpecialistsTab = () => {
         isOpen={modalConfig.isOpen}
         onClose={() => setModalConfig({ isOpen: false, specialistId: null })}
         onConfirm={executeDelete}
-        title="Remove Specialist"
-        message="Are you sure you want to remove this specialist from the system? This action cannot be undone."
+        title="Remove Laboratorist / Radiologist"
+        message="Are you sure you want to remove this laboratorist/radiologist from the system? This action cannot be undone."
         confirmText="Remove"
         isDanger={true}
       />
@@ -1737,7 +1825,7 @@ const AdminDashboard = () => {
           { id: 'overview', label: 'Overview', icon: PieChart },
           { id: 'doctors', label: 'Doctors', icon: Stethoscope },
           { id: 'patients', label: 'Patients', icon: Users },
-          { id: 'specialists', label: 'Specialists', icon: Activity },
+          { id: 'specialists', label: 'Laboratorists / Radiologists', icon: Activity },
           { id: 'services', label: 'Services Config', icon: FileText },
           { id: 'monitoring', label: 'Monitoring', icon: Activity },
           { id: 'settings', label: 'Settings', icon: Settings }

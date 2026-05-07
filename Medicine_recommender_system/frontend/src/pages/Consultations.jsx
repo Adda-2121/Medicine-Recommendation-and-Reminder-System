@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
 import api from '../services/api';
 import io from 'socket.io-client';
+import { TRIAGE_REASONS, triageRoute, SPECIALTY_FEE_KEYS } from '../utils/triageRules';
 
 const SOCKET_URL = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace('/api', '') : 'http://localhost:5000';
 const socket = io(SOCKET_URL);
@@ -75,13 +76,21 @@ const Consultations = () => {
 
   // Payment form state
   const [globalConsultationFee, setGlobalConsultationFee] = useState('100');
+  const [allFees, setAllFees] = useState({});
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
   // New consultation form state
   const [newConsultation, setNewConsultation] = useState({
     reason: '',
-    symptoms_description: ''
+    symptoms_description: '',
+    consultation_type: 'gp',
+    target_specialty: '',
   });
+  // Triage state
+  const [triageStep, setTriageStep] = useState('reason'); // 'reason' | 'confirm'
+  const [triageReasonKey, setTriageReasonKey] = useState('');
+  const [triageResult, setTriageResult] = useState(null); // { doctorType, specialty, routingNote }
+  const [triageOverrideGP, setTriageOverrideGP] = useState(false);
 
   // Service requests state
   const [serviceReqs, setServiceReqs] = useState([]);
@@ -103,7 +112,6 @@ const Consultations = () => {
   const [isPrescribing, setIsPrescribing] = useState(false);
   
   const [modalConfig, setModalConfig] = useState({ isOpen: false, reqId: null });
-  const [isMarkingCured, setIsMarkingCured] = useState(false);
 
   // Consultation feedback state (patient submitting after consultation completed)
   const [consultFeedback, setConsultFeedback] = useState({ isOpen: false, rating: 0, comment: '', submitting: false });
@@ -160,6 +168,10 @@ const Consultations = () => {
       if (feeSetting) {
         setGlobalConsultationFee(feeSetting.value);
       }
+      // Build a map of all fee settings for the new consultation form preview
+      const feeMap = {};
+      settingsRes.data.forEach(s => { feeMap[s.key] = s.value; });
+      setAllFees(feeMap);
       if (consRes.data.length > 0 && !activeChatId && !showNewForm) {
         // Auto-select first active or pending consultation
         const activeOrFirst = consRes.data.find(c => c.status !== 'completed') || consRes.data[0];
@@ -441,10 +453,13 @@ const Consultations = () => {
     try {
       const res = await api.post('/consultations', newConsultation);
       setShowNewForm(false);
-      setNewConsultation({ reason: '', symptoms_description: '' });
-      fetchConsultations(); // fetches list to sync sidebar
+      setNewConsultation({ reason: '', symptoms_description: '', consultation_type: 'gp', target_specialty: '' });
+      setTriageStep('reason');
+      setTriageReasonKey('');
+      setTriageResult(null);
+      setTriageOverrideGP(false);
+      fetchConsultations();
 
-      // Auto-select and open the newly created consultation!
       if (res.data && res.data.consultation) {
         setActiveChatId(res.data.consultation.id);
       }
@@ -502,20 +517,6 @@ const Consultations = () => {
       api.get(`/service-requests/consultation/${activeChatId}`).then(res => setServiceReqs(res.data)); // refresh list
       toast.success("Request updated safely.");
     } catch (err) { console.error(err); toast.error("Failed to update request."); }
-  };
-
-  const handleMarkAsCured = async () => {
-    if (!activeChatId) return;
-    setIsMarkingCured(true);
-    try {
-      await api.put(`/treatments/${activeChatId}/mark-cured`);
-      toast.success('Patient marked as cured!');
-      fetchConsultations();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to mark as cured. Ensure a treatment plan exists first.');
-    } finally {
-      setIsMarkingCured(false);
-    }
   };
 
   const handleSubmitConsultFeedback = async () => {
@@ -720,65 +721,167 @@ const Consultations = () => {
       {/* Main Content Area (Chat or Info/Form) */}
       <div className="flex-1 flex flex-col bg-white overflow-hidden relative">
 
-        {/* NEW CONSULTATION FORM */}
+        {/* NEW CONSULTATION FORM — Triage System */}
         {showNewForm ? (
-          <div className="flex-1 overflow-y-auto p-8 max-w-2xl mx-auto w-full">
-            <div className="mb-8 text-center">
-              <div className="mx-auto bg-primary-100 text-primary-600 w-16 h-16 rounded-full flex items-center justify-center mb-4">
-                <Activity size={32} />
+          <div className="flex-1 overflow-y-auto p-6 max-w-2xl mx-auto w-full">
+            <div className="mb-6 text-center">
+              <div className="mx-auto bg-primary-100 text-primary-600 w-14 h-14 rounded-full flex items-center justify-center mb-3">
+                <Activity size={28} />
               </div>
-              <h2 className="text-2xl font-bold text-slate-800">{t('consultations.reqConsultation')}</h2>
-              <p className="text-slate-500 mt-2">{t('consultations.reqDesc')}</p>
+              <h2 className="text-2xl font-bold text-slate-800">New Consultation</h2>
+              <p className="text-slate-500 text-sm mt-1">Tell us your reason for visiting so we can route you to the right doctor.</p>
             </div>
 
-            <form onSubmit={handleSubmitConsultation} className="space-y-6 bg-slate-50 p-6 rounded-xl border border-slate-200">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">{t('consultations.primaryReason')}</label>
-                <select
-                  required
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                  value={newConsultation.reason}
-                  onChange={e => setNewConsultation({ ...newConsultation, reason: e.target.value })}
-                >
-                  <option value="" disabled>---</option>
-                  <option value={t('findDoctor.diseases.general')}>{t('findDoctor.diseases.general')}</option>
-                  <option value={t('findDoctor.diseases.fever')}>{t('findDoctor.diseases.fever')}</option>
-                  <option value={t('findDoctor.diseases.headache')}>{t('findDoctor.diseases.headache')}</option>
-                  <option value={t('findDoctor.diseases.stomach')}>{t('findDoctor.diseases.stomach')}</option>
-                  <option value={t('findDoctor.diseases.skin')}>{t('findDoctor.diseases.skin')}</option>
-                  <option value={t('findDoctor.diseases.joint')}>{t('findDoctor.diseases.joint')}</option>
-                  <option value={t('findDoctor.diseases.breathing')}>{t('findDoctor.diseases.breathing')}</option>
-                  <option value={t('findDoctor.diseases.dental')}>{t('findDoctor.diseases.dental')}</option>
-                  <option value={t('findDoctor.diseases.eye')}>{t('findDoctor.diseases.eye')}</option>
-                  <option value={t('findDoctor.diseases.other')}>{t('findDoctor.diseases.other')}</option>
-                </select>
+            <div className="flex items-center gap-2 mb-6">
+              <div className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full ${triageStep === 'reason' ? 'bg-primary-600 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
+                {triageStep !== 'reason' ? '✓' : '1'} Reason for Visit
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">{t('consultations.symptomsDesc')}</label>
-                <textarea
-                  required rows="4"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white resize-none"
-                  placeholder={t('consultations.symptomsPlaceholder')}
-                  value={newConsultation.symptoms_description}
-                  onChange={e => setNewConsultation({ ...newConsultation, symptoms_description: e.target.value })}
-                ></textarea>
+              <div className="flex-1 h-px bg-slate-200" />
+              <div className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full ${triageStep === 'confirm' ? 'bg-primary-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                2 Confirm &amp; Submit
               </div>
-              <div className="flex justify-end pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowNewForm(false)}
-                  className="px-6 py-2.5 text-slate-600 hover:bg-slate-200 rounded-lg mr-4 font-medium transition"
-                >
-                  {t('consultations.cancel')}
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm transition"
-                >
-                  {t('consultations.submitReq')}
-                </button>
+            </div>
+
+            {triageStep === 'reason' && (
+              <div className="space-y-4">
+                <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                  <label className="block text-sm font-bold text-slate-700 mb-3">Reason for Visit <span className="text-red-500">*</span></label>
+                  <div className="grid grid-cols-1 gap-2">
+                    {TRIAGE_REASONS.map(reason => (
+                      <button key={reason.key} type="button" onClick={() => setTriageReasonKey(reason.key)}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-lg border-2 text-left transition-all ${triageReasonKey === reason.key ? 'border-primary-500 bg-primary-50' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}>
+                        <span className="text-2xl w-8 text-center shrink-0">{reason.emoji}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-semibold ${triageReasonKey === reason.key ? 'text-primary-700' : 'text-slate-800'}`}>{reason.label}</p>
+                          <p className="text-xs text-slate-400 mt-0.5 truncate">{reason.description}</p>
+                        </div>
+                        {triageReasonKey === reason.key && (
+                          <span className="shrink-0 w-5 h-5 rounded-full bg-primary-600 flex items-center justify-center">
+                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button type="button" disabled={!triageReasonKey}
+                    onClick={() => {
+                      const result = triageRoute(triageReasonKey);
+                      setTriageResult(result);
+                      setTriageOverrideGP(false);
+                      const selectedReason = TRIAGE_REASONS.find(r => r.key === triageReasonKey);
+                      setNewConsultation(prev => ({ ...prev, reason: selectedReason?.label || '', consultation_type: result.doctorType, target_specialty: result.specialty || '' }));
+                      setTriageStep('confirm');
+                    }}
+                    className="px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold text-sm transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm">
+                    Continue →
+                  </button>
+                </div>
               </div>
-            </form>
+            )}
+
+            {triageStep === 'confirm' && triageResult && (
+              <form onSubmit={handleSubmitConsultation} className="space-y-4">
+                {/* Recommendation card */}
+                {(() => {
+                  const selectedReason = TRIAGE_REASONS.find(r => r.key === triageReasonKey);
+                  const isGP = triageOverrideGP || triageResult.doctorType === 'gp';
+                  const displaySpecialty = isGP ? 'General Practitioner' : triageResult.specialty;
+                  const isSpecialist = !isGP && triageResult.doctorType === 'specialist';
+                  return (
+                    <div className={`rounded-xl border-2 p-5 ${isSpecialist ? 'border-indigo-300 bg-indigo-50' : 'border-primary-300 bg-primary-50'}`}>
+                      <div className="flex items-start gap-3">
+                        <span className="text-3xl">{selectedReason?.emoji}</span>
+                        <div className="flex-1">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-0.5">Reason for Visit</p>
+                          <p className="font-bold text-slate-800 text-sm">{selectedReason?.label}</p>
+                        </div>
+                      </div>
+                      <div className={`mt-4 pt-4 border-t ${isSpecialist ? 'border-indigo-200' : 'border-primary-200'}`}>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Recommended Doctor</p>
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2.5 rounded-full ${isSpecialist ? 'bg-indigo-100' : 'bg-primary-100'}`}>
+                            <span className="text-xl">{isSpecialist ? '👨‍⚕️' : '🩺'}</span>
+                          </div>
+                          <div>
+                            <p className={`font-bold text-base ${isSpecialist ? 'text-indigo-700' : 'text-primary-700'}`}>{displaySpecialty}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">{triageOverrideGP ? 'You chose to see a General Practitioner instead.' : triageResult.routingNote}</p>
+                          </div>
+                        </div>
+                      </div>
+                      {triageResult.doctorType === 'specialist' && (
+                        <div className="mt-4 pt-3 border-t border-dashed border-slate-300">
+                          {!triageOverrideGP ? (
+                            <button type="button"
+                              onClick={() => { setTriageOverrideGP(true); setNewConsultation(prev => ({ ...prev, consultation_type: 'gp', target_specialty: '' })); }}
+                              className="text-xs text-slate-500 hover:text-primary-600 font-medium underline underline-offset-2 transition">
+                              I'd prefer to see a General Practitioner instead
+                            </button>
+                          ) : (
+                            <button type="button"
+                              onClick={() => { setTriageOverrideGP(false); setNewConsultation(prev => ({ ...prev, consultation_type: triageResult.doctorType, target_specialty: triageResult.specialty || '' })); }}
+                              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium underline underline-offset-2 transition">
+                              ↩ Go back to recommended {triageResult.specialty}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Symptoms textarea */}
+                <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                  <label className="block text-sm font-bold text-slate-700 mb-1">
+                    Describe your symptoms <span className="ml-1 text-xs font-normal text-slate-400">(optional)</span>
+                  </label>
+                  <p className="text-xs text-slate-400 mb-3">This helps the doctor prepare. It is not used for routing.</p>
+                  <textarea rows={4}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-slate-50 resize-none text-sm"
+                    placeholder="e.g. I've had a persistent headache for 3 days, mild fever, and fatigue…"
+                    value={newConsultation.symptoms_description}
+                    onChange={e => setNewConsultation(prev => ({ ...prev, symptoms_description: e.target.value }))} />
+                </div>
+
+                {/* Fee preview */}
+                {(() => {
+                  const isGP = triageOverrideGP || triageResult.doctorType === 'gp';
+                  const specialty = isGP ? 'General Practitioner' : triageResult.specialty;
+                  const feeKey = SPECIALTY_FEE_KEYS[specialty] || 'fee_gp';
+                  const feeAmount = allFees[feeKey] || allFees['consultation_fee'] || '100';
+                  return (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide">Consultation Fee</p>
+                        <p className="text-xs text-emerald-600 mt-0.5">{specialty} · 1-week access</p>
+                      </div>
+                      <span className="text-2xl font-bold text-emerald-700">{Number(feeAmount).toLocaleString()} <span className="text-base font-semibold">ETB</span></span>
+                    </div>
+                  );
+                })()}
+
+                {/* Actions */}
+                <div className="flex items-center justify-between pt-2">
+                  <button type="button"
+                    onClick={() => { setTriageStep('reason'); setTriageResult(null); setTriageOverrideGP(false); }}
+                    className="text-sm text-slate-500 hover:text-slate-700 font-medium flex items-center gap-1 transition">
+                    ← Change reason
+                  </button>
+                  <div className="flex gap-3">
+                    <button type="button"
+                      onClick={() => { setShowNewForm(false); setTriageStep('reason'); setTriageReasonKey(''); setTriageResult(null); setTriageOverrideGP(false); setNewConsultation({ reason: '', symptoms_description: '', consultation_type: 'gp', target_specialty: '' }); }}
+                      className="px-5 py-2.5 text-slate-600 hover:bg-slate-100 rounded-lg font-medium text-sm transition">
+                      Cancel
+                    </button>
+                    <button type="submit"
+                      className="px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-semibold text-sm shadow-sm transition">
+                      Request Consultation
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
           </div>
         ) : !activeConsultation ? (
           /* NO CHAT SELECTED STATE */
@@ -814,36 +917,6 @@ const Consultations = () => {
               </div>
 
               <div className="flex items-center space-x-3">
-                {(!activeConsultation.Payment || activeConsultation.Payment.status === 'verified') && user.role === 'doctor' && (
-                  <>
-                    <button
-                      onClick={() => setShowPrescribeModal(true)}
-                      className="flex items-center space-x-1.5 px-3 py-1.5 bg-purple-100 text-purple-700 hover:bg-purple-200 rounded-full font-bold text-xs transition shadow-sm"
-                    >
-                      <PlusCircle size={16} /> <span>Prescribe</span>
-                    </button>
-                    <button
-                      onClick={() => setShowServiceForm(true)}
-                      className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-full font-bold text-xs transition shadow-sm"
-                    >
-                      <Activity size={16} /> <span>Request Service</span>
-                    </button>
-                    {activeConsultation.status !== 'completed' && (
-                      <button
-                        onClick={handleMarkAsCured}
-                        disabled={isMarkingCured}
-                        className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 text-white hover:bg-emerald-700 rounded-full font-bold text-xs transition shadow-sm disabled:opacity-60"
-                      >
-                        <CheckCircle size={16} /> <span>{isMarkingCured ? 'Saving...' : 'Mark as Cured'}</span>
-                      </button>
-                    )}
-                    {activeConsultation.status === 'completed' && (
-                      <span className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-bold text-xs">
-                        <CheckCircle size={14} /> <span>Cured</span>
-                      </span>
-                    )}
-                  </>
-                )}
                 {(!activeConsultation.Payment || activeConsultation.Payment.status === 'verified') && (
                   <button
                     onClick={handleStartVideoCall}
@@ -851,6 +924,22 @@ const Consultations = () => {
                   >
                     <Video size={16} /> <span>{t('consultations.videoCall')}</span>
                   </button>
+                )}
+                {(!activeConsultation.Payment || activeConsultation.Payment.status === 'verified') && user.role === 'doctor' && (
+                  <>
+                    <button
+                      onClick={() => setShowServiceForm(true)}
+                      className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-full font-bold text-xs transition shadow-sm"
+                    >
+                      <Activity size={16} /> <span>Request Service</span>
+                    </button>
+                    <button
+                      onClick={() => setShowPrescribeModal(true)}
+                      className="flex items-center space-x-1.5 px-3 py-1.5 bg-purple-100 text-purple-700 hover:bg-purple-200 rounded-full font-bold text-xs transition shadow-sm"
+                    >
+                      <PlusCircle size={16} /> <span>Prescribe</span>
+                    </button>
+                  </>
                 )}
                 <button className="text-slate-400 hover:text-primary-600 p-2 rounded-full hover:bg-slate-100 transition" title="Consultation Details">
                   <Info size={20} />
@@ -945,8 +1034,20 @@ const Consultations = () => {
 
                         <div className="space-y-5 mt-4">
                           <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 flex justify-between items-center">
-                            <span className="font-bold text-slate-900 text-lg">Subscription Fee</span>
-                            <span className="font-bold text-primary-600 text-xl">{globalConsultationFee} Birr</span>
+                            <div>
+                              <span className="font-bold text-slate-900 text-lg">Consultation Fee</span>
+                              {activeConsultation.consultation_type === 'specialist' && activeConsultation.target_specialty && (
+                                <p className="text-xs text-indigo-600 font-medium mt-0.5">{activeConsultation.target_specialty} Specialist</p>
+                              )}
+                              {activeConsultation.consultation_type === 'gp' && (
+                                <p className="text-xs text-primary-600 font-medium mt-0.5">General Practitioner</p>
+                              )}
+                            </div>
+                            <span className="font-bold text-primary-600 text-xl">
+                              {activeConsultation.Payment?.amount
+                                ? Number(activeConsultation.Payment.amount).toLocaleString()
+                                : globalConsultationFee} Birr
+                            </span>
                           </div>
                           
                           <button 

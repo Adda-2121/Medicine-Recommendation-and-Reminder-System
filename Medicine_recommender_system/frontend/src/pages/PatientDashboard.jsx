@@ -27,13 +27,6 @@ const PatientDashboard = () => {
 
   const actionCards = [
     {
-      title: t('patientDashboard.actionCards.startConsultation'),
-      description: t('patientDashboard.actionCards.startConsultationDesc'),
-      icon: PlusCircle,
-      color: 'bg-primary-50 text-primary-600',
-      onClick: () => navigate('/consultations?action=new')
-    },
-    {
       title: t('patientDashboard.actionCards.activeChats'),
       description: t('patientDashboard.actionCards.activeChatsDesc'),
       icon: MessageSquare,

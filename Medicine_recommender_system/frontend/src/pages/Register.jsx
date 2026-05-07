@@ -13,6 +13,7 @@ const Register = () => {
     phone_number: '', age: '', sex: '',
     document: null, selfie: null, id_document: null, degree_document: null, experience_document: null,
     license_number: '', license_issuing_authority: '', license_expiry_date: '',
+    specialty: '',
     degree: '', university_name: '', graduation_year: '', current_workplace: '', experience_years: ''
   });
   const [currentStep, setCurrentStep] = useState(1);
@@ -188,6 +189,7 @@ const Register = () => {
     if (formData.password.length < 8) { setError('Password must be at least 8 characters long.'); return; }
     if (verifyStep !== 'verified') { setError('Please verify your identity before registering.'); return; }
     if (formData.role === 'doctor' && !formData.selfie) { setError('Please capture a live photo for identity verification.'); return; }
+    if (formData.role === 'doctor' && !formData.specialty) { setError('Please select your medical specialty.'); return; }
 
     setLoading(true);
     try {
@@ -443,6 +445,41 @@ const Register = () => {
           {/* STEP 3: Professional Credentials (Doctors Only) */}
           {currentStep === 3 && formData.role === 'doctor' && (
             <div className="space-y-4 animate-fadeIn bg-slate-50 p-4 rounded-md border border-slate-200">
+
+              {/* Specialty selection — top of step 3 */}
+              <h3 className="font-semibold text-slate-700 text-sm pb-2 border-b border-slate-200">Specialization</h3>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Medical Specialty <span className="text-red-500">*</span>
+                </label>
+                <select
+                  name="specialty"
+                  required
+                  value={formData.specialty}
+                  onChange={handleChange}
+                  className="w-full border-slate-300 border rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-primary-500 transition bg-white"
+                >
+                  <option value="" disabled>Select your specialty…</option>
+                  <option value="General Practitioner">General Practitioner (GP)</option>
+                  <optgroup label="Specialists">
+                    <option value="Psychiatrist">Psychiatrist</option>
+                    <option value="Dermatologist">Dermatologist</option>
+                    <option value="Cardiologist">Cardiologist</option>
+                    <option value="Internal Medicine">Internal Medicine</option>
+                    <option value="Pediatrician">Pediatrician</option>
+                    <option value="Gynecologist">Gynecologist</option>
+                    <option value="Pulmonologist">Pulmonologist</option>
+                    <option value="Neurologist">Neurologist</option>
+                    <option value="Orthopedic">Orthopedic</option>
+                  </optgroup>
+                </select>
+                {formData.specialty && (
+                  <p className="text-xs text-emerald-600 mt-1 font-medium">
+                    ✓ {formData.specialty === 'General Practitioner' ? 'You will handle initial patient consultations and referrals.' : `You will receive direct and GP-referred ${formData.specialty} consultations.`}
+                  </p>
+                )}
+              </div>
+
               <h3 className="font-semibold text-slate-700 text-sm pb-2 border-b border-slate-200">Medical License</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>

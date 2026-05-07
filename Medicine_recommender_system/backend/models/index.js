@@ -38,6 +38,10 @@ if (models.Consultation) {
   models.Consultation.hasMany(models.ChatMessage, { foreignKey: 'consultation_id' });
   models.Consultation.hasOne(models.TreatmentPlan, { foreignKey: 'consultation_id' });
   models.Consultation.hasOne(models.Payment, { as: 'Payment', foreignKey: 'consultation_id' });
+
+  // Self-referential: a specialist consultation can be referred from a GP consultation
+  models.Consultation.belongsTo(models.Consultation, { as: 'ReferredBy', foreignKey: 'referred_by_id' });
+  models.Consultation.hasMany(models.Consultation, { as: 'Referrals', foreignKey: 'referred_by_id' });
 }
 
 if (models.Payment) {

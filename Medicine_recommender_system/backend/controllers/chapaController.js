@@ -193,9 +193,8 @@ exports.initializeConsultationPayment = async (req, res) => {
       return res.status(400).json({ message: 'Patient email is required for payment' });
     }
 
-    // Get price from settings
-    const setting = await Setting.findOne({ where: { key: 'consultation_fee' } });
-    const price = setting ? setting.value : '100';
+    // Use the amount already set on the payment record (set at consultation creation time)
+    const price = payment.amount && Number(payment.amount) > 0 ? payment.amount : '100';
 
     payment.amount = price;
 
