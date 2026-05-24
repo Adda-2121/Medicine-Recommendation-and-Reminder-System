@@ -1,12 +1,20 @@
 import React, { useState, useEffect, useRef, useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import api from '../services/api';
+import io from 'socket.io-client';
+import { useSearchParams } from 'react-router-dom';
 import { Activity, Clock, CheckCircle, FileText, UploadCloud, User, Stethoscope, AlertTriangle, PhoneCall, MessageSquare, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ConfirmationModal from '../components/common/ConfirmationModal';
+import { uploadResultSchema, formatZodErrors } from '../utils/validationSchemas';
+
+const SOCKET_URL = import.meta.env.VITE_API_URL
+  ? import.meta.env.VITE_API_URL.replace('/api', '')
+  : 'http://localhost:5000';
 
 const SpecialistDashboard = () => {
   const { user } = useContext(AuthContext);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState('pending');
   const [requests, setRequests] = useState([]);
   const [historyRequests, setHistoryRequests] = useState([]);
@@ -16,6 +24,7 @@ const SpecialistDashboard = () => {
   const [resultNotes, setResultNotes] = useState('');
   const [resultFile, setResultFile] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [resultFieldErrors, setResultFieldErrors] = useState({});
 
   // Chat tracking in modal
   const [chatMessages, setChatMessages] = useState([]);
@@ -25,6 +34,9 @@ const SpecialistDashboard = () => {
   const [editMessageText, setEditMessageText] = useState('');
 
   const [modalConfig, setModalConfig] = useState({ isOpen: false, msgId: null });
+
+  // Track the req_id from notification click — read once on mount
+  const pendingReqId = useRef(searchParams.get('req_id'));
 
   const fetchRequests = async () => {
     try {
@@ -43,8 +55,54 @@ const SpecialistDashboard = () => {
   useEffect(() => {
     fetchRequests();
     const interval = setInterval(fetchRequests, 30000);
+    // Clear the req_id from URL immediately so it doesn't persist on refresh
+    if (pendingReqId.current) {
+      setSearchParams({}, { replace: true });
+    }
     return () => clearInterval(interval);
   }, []);
+
+  // Once requests are loaded, handle the notification-click req_id
+  useEffect(() => {
+    const reqId = pendingReqId.current;
+    if (!reqId || loading || requests.length === 0) return;
+
+    // Only run once
+    pendingReqId.current = null;
+
+    const target = requests.find(r => r.id === reqId);
+    if (!target) return;
+
+    if (target.status === 'pending' && target.payment_status === 'paid') {
+      // Auto-start → decreases queue for patient and specialist
+      api.put(`/service-requests/${reqId}`, { status: 'in_progress' })
+        .then(() => {
+          fetchRequests();
+          setSelectedReq({ ...target, status: 'in_progress' });
+          toast.success('Request started — queue updated.');
+        })
+        .catch(err => {
+          console.error('Auto-start failed', err);
+          setSelectedReq(target);
+        });
+    } else {
+      // Unpaid or already in progress — just open the modal
+      setSelectedReq(target);
+    }
+  }, [loading, requests]);
+
+  // Real-time queue updates: refresh when any request status changes
+  useEffect(() => {
+    if (!user?.id) return;
+    const socket = io(SOCKET_URL);
+    socket.emit('join_user_room', user.id);
+    socket.on('queue_updated', () => {
+      fetchRequests();
+    });
+    return () => {
+      socket.disconnect();
+    };
+  }, [user?.id]);
 
   const handleUpdateStatus = async (e) => {
     e.preventDefault();
@@ -52,6 +110,13 @@ const SpecialistDashboard = () => {
 
     if (selectedReq.payment_status !== 'paid') {
       toast.error("Cannot process this request because it hasn't been paid for yet.");
+      return;
+    }
+
+    setResultFieldErrors({});
+    const parsed = uploadResultSchema.safeParse({ result_notes: resultNotes, result_file: resultFile });
+    if (!parsed.success) {
+      setResultFieldErrors(formatZodErrors(parsed.error));
       return;
     }
 
@@ -70,6 +135,7 @@ const SpecialistDashboard = () => {
       setSelectedReq(null);
       setResultNotes('');
       setResultFile(null);
+      setResultFieldErrors({});
       fetchRequests();
     } catch (err) {
       console.error(err);
@@ -387,11 +453,12 @@ const SpecialistDashboard = () => {
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Analysis Notes / Summary</label>
                     <textarea
                       rows="4"
-                      className="w-full p-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white resize-none"
+                      className={`w-full p-3 border ${resultFieldErrors.result_notes ? 'border-red-500 bg-red-50' : 'border-slate-300'} rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white resize-none`}
                       placeholder="Key findings, abnormalities, or summary info... (Optional)"
                       value={resultNotes}
-                      onChange={(e) => setResultNotes(e.target.value)}
+                      onChange={(e) => {setResultNotes(e.target.value); setResultFieldErrors(prev => ({...prev, result_notes: undefined}));}}
                     ></textarea>
+                    {resultFieldErrors.result_notes && <p className="text-red-500 text-xs mt-1">{resultFieldErrors.result_notes}</p>}
                   </div>
 
                   <div>
@@ -423,10 +490,16 @@ const SpecialistDashboard = () => {
                           required
                           className="sr-only"
                           accept="image/jpeg, image/png, image/webp, application/pdf"
-                          onChange={(e) => { if (e.target.files[0]) setResultFile(e.target.files[0]); }}
+                          onChange={(e) => { 
+                            if (e.target.files[0]) {
+                                setResultFile(e.target.files[0]);
+                                setResultFieldErrors(prev => ({...prev, result_file: undefined}));
+                            } 
+                          }}
                         />
                       </div>
                     </div>
+                    {resultFieldErrors.result_file && <p className="text-red-500 text-xs mt-1 text-center">{resultFieldErrors.result_file}</p>}
                   </div>
 
                   <div className="pt-4 border-t border-slate-100 flex justify-end space-x-3">

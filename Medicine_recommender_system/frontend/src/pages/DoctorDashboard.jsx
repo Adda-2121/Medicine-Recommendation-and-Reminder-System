@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ConfirmationModal from '../components/common/ConfirmationModal';
+import { availabilitySlotSchema, referralSchema, formatZodErrors } from '../utils/validationSchemas';
 
 const DoctorDashboard = () => {
   const { user } = useContext(AuthContext);
@@ -37,6 +38,7 @@ const DoctorDashboard = () => {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [newSlot, setNewSlot] = useState({ date: '', start_time: '', end_time: '' });
   const [isAddingSlot, setIsAddingSlot] = useState(false);
+  const [slotFieldErrors, setSlotFieldErrors] = useState({});
 
   // Reviews State
   const [reviewsData, setReviewsData] = useState({ averageRating: 0, totalReviews: 0, testimonials: [] });
@@ -89,16 +91,23 @@ const DoctorDashboard = () => {
 
   const handleAddSlot = async (e) => {
     e.preventDefault();
-    if (!newSlot.date || !newSlot.start_time || !newSlot.end_time) return;
+    setSlotFieldErrors({});
+    
+    const parsed = availabilitySlotSchema.safeParse(newSlot);
+    if (!parsed.success) {
+      setSlotFieldErrors(formatZodErrors(parsed.error));
+      return;
+    }
     
     try {
       setIsAddingSlot(true);
       await api.post('/availability', newSlot);
       setNewSlot({ date: '', start_time: '', end_time: '' });
       fetchAvailabilities();
+      toast.success('Availability slot added!');
     } catch (err) {
       console.error(err);
-      toast.error('Failed to add slot');
+      toast.error(err.response?.data?.message || 'Failed to add slot');
     } finally {
       setIsAddingSlot(false);
     }
@@ -126,18 +135,27 @@ const DoctorDashboard = () => {
     'Pediatrician', 'Gynecologist', 'Pulmonologist', 'Neurologist', 'Orthopedic'
   ];
   const [referralModal, setReferralModal] = useState({ isOpen: false, consultationId: null });
-  const [referralForm, setReferralForm] = useState({ target_specialty: '', referral_notes: '' });
+  const [referralForm, setReferralForm] = useState({ target_specialty: '', referral_notes: '', urgency: 'routine' });
   const [referralLoading, setReferralLoading] = useState(false);
+  const [referralFieldErrors, setReferralFieldErrors] = useState({});
 
   const handleReferSubmit = async (e) => {
     e.preventDefault();
-    if (!referralForm.target_specialty) return;
+    setReferralFieldErrors({});
+    
+    const parsed = referralSchema.safeParse(referralForm);
+    if (!parsed.success) {
+      setReferralFieldErrors(formatZodErrors(parsed.error));
+      return;
+    }
+    
     setReferralLoading(true);
     try {
       await api.post(`/consultations/${referralModal.consultationId}/refer`, referralForm);
       toast.success(`Patient referred to ${referralForm.target_specialty} successfully.`);
       setReferralModal({ isOpen: false, consultationId: null });
-      setReferralForm({ target_specialty: '', referral_notes: '' });
+      setReferralForm({ target_specialty: '', referral_notes: '', urgency: 'routine' });
+      setReferralFieldErrors({});
       fetchConsultations();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to create referral');
@@ -157,19 +175,19 @@ const DoctorDashboard = () => {
     }
   };
 
-    const stats = {
+  const stats = {
     pending: consultations.filter(c => c.status === 'assigned').length,
     activeChats: consultations.filter(c => c.status === 'in_progress').length,
-    pendingResults: consultations.filter(c => c.status === 'waiting_for_results').length,
-    resultsReady: consultations.filter(c => c.status === 'result_ready').length,
-    completed: consultations.filter(c => c.status === 'completed').length,
+    completed: consultations.filter(c =>
+      c.status === 'completed' &&
+      reviewsData.testimonials.some(t => t.patient_id === c.patient_id)
+    ).length,
   };
 
   const summaryCards = [
     { title: 'Pending Patients', value: stats.pending, icon: Users, color: 'text-amber-600', bg: 'bg-amber-100' },
     { title: 'Active Chats', value: stats.activeChats, icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-100' },
-    { title: 'Pending Results', value: stats.pendingResults, icon: Clock, color: 'text-slate-600', bg: 'bg-slate-100' },
-    { title: 'Results Ready', value: stats.resultsReady, icon: Activity, color: 'text-emerald-600', bg: 'bg-emerald-100' },
+    { title: 'Completed', value: stats.completed, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-100' },
   ];
 
   return (
@@ -278,14 +296,14 @@ const DoctorDashboard = () => {
         <>
           {loading ? (
             <div className="animate-pulse space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                 {[1,2,3,4].map(i => <div key={i} className="h-24 bg-slate-200 rounded-xl"></div>)}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                 {[1,2,3].map(i => <div key={i} className="h-24 bg-slate-200 rounded-xl"></div>)}
               </div>
               <div className="h-64 bg-slate-200 rounded-xl w-full"></div>
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto pr-2 pb-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 {summaryCards.map((card, idx) => (
                   <div key={idx} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex items-center hover:shadow-md transition">
                     <div className={`${card.bg} ${card.color} p-4 rounded-full mr-4`}>
@@ -304,10 +322,14 @@ const DoctorDashboard = () => {
                   <h2 className="font-semibold text-slate-800 text-lg">Assigned Patients</h2>
                 </div>
                 
-                {consultations.length === 0 ? (
+                {consultations.filter(c =>
+                    c.status === 'assigned' ||
+                    c.status === 'in_progress' ||
+                    (c.status === 'completed' && reviewsData.testimonials.some(t => t.patient_id === c.patient_id))
+                  ).length === 0 ? (
                   <div className="p-12 text-center text-slate-500">
                     <Users size={48} className="mx-auto text-slate-300 mb-4" />
-                    <p>No patients currently assigned to you.</p>
+                    <p>No active or pending patients right now.</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -322,7 +344,16 @@ const DoctorDashboard = () => {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-slate-100">
-                        {consultations.map(c => (
+                        {consultations
+                          .filter(c => {
+                            if (c.status === 'assigned' || c.status === 'in_progress') return true;
+                            if (c.status === 'completed') {
+                              // Show completed only if the patient left a review for this doctor
+                              return reviewsData.testimonials.some(t => t.patient_id === c.patient_id);
+                            }
+                            return false;
+                          })
+                          .map(c => (
                           <tr key={c.id} className="hover:bg-slate-50 transition-colors group">
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center">
@@ -414,26 +445,29 @@ const DoctorDashboard = () => {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
                 <input 
                   type="date" required min={new Date().toISOString().split('T')[0]}
-                  value={newSlot.date} onChange={e => setNewSlot({...newSlot, date: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                  value={newSlot.date} onChange={e => {setNewSlot({...newSlot, date: e.target.value}); setSlotFieldErrors(prev => ({...prev, date: undefined}));}}
+                  className={`w-full px-3 py-2 border ${slotFieldErrors.date ? 'border-red-500 bg-red-50' : 'border-slate-300'} rounded-lg focus:ring-2 focus:ring-primary-500`}
                 />
+                {slotFieldErrors.date && <p className="text-red-500 text-xs mt-1">{slotFieldErrors.date}</p>}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Start Time</label>
                   <input 
                     type="time" required
-                    value={newSlot.start_time} onChange={e => setNewSlot({...newSlot, start_time: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    value={newSlot.start_time} onChange={e => {setNewSlot({...newSlot, start_time: e.target.value}); setSlotFieldErrors(prev => ({...prev, start_time: undefined, end_time: undefined}));}}
+                    className={`w-full px-3 py-2 border ${slotFieldErrors.start_time ? 'border-red-500 bg-red-50' : 'border-slate-300'} rounded-lg focus:ring-2 focus:ring-primary-500`}
                   />
+                  {slotFieldErrors.start_time && <p className="text-red-500 text-xs mt-1">{slotFieldErrors.start_time}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">End Time</label>
                   <input 
                     type="time" required
-                    value={newSlot.end_time} onChange={e => setNewSlot({...newSlot, end_time: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    value={newSlot.end_time} onChange={e => {setNewSlot({...newSlot, end_time: e.target.value}); setSlotFieldErrors(prev => ({...prev, end_time: undefined}));}}
+                    className={`w-full px-3 py-2 border ${slotFieldErrors.end_time ? 'border-red-500 bg-red-50' : 'border-slate-300'} rounded-lg focus:ring-2 focus:ring-primary-500`}
                   />
+                  {slotFieldErrors.end_time && <p className="text-red-500 text-xs mt-1">{slotFieldErrors.end_time}</p>}
                 </div>
               </div>
               <button 
@@ -632,25 +666,41 @@ const DoctorDashboard = () => {
                 <select
                   required
                   value={referralForm.target_specialty}
-                  onChange={e => setReferralForm(prev => ({ ...prev, target_specialty: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white"
+                  onChange={e => {setReferralForm(prev => ({ ...prev, target_specialty: e.target.value })); setReferralFieldErrors(prev => ({...prev, target_specialty: undefined}));}}
+                  className={`w-full px-3 py-2.5 border ${referralFieldErrors.target_specialty ? 'border-red-500 bg-red-50' : 'border-slate-300 bg-white'} rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400`}
                 >
                   <option value="" disabled>Select specialist type…</option>
                   {SPECIALIST_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
+                {referralFieldErrors.target_specialty && <p className="text-red-500 text-xs mt-1">{referralFieldErrors.target_specialty}</p>}
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Urgency Level <span className="text-red-500">*</span></label>
+                <select
+                  required
+                  value={referralForm.urgency}
+                  onChange={e => {setReferralForm(prev => ({ ...prev, urgency: e.target.value })); setReferralFieldErrors(prev => ({...prev, urgency: undefined}));}}
+                  className={`w-full px-3 py-2.5 border ${referralFieldErrors.urgency ? 'border-red-500 bg-red-50' : 'border-slate-300 bg-white'} rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400`}
+                >
+                  <option value="routine">Routine</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="emergency">Emergency</option>
+                </select>
+                {referralFieldErrors.urgency && <p className="text-red-500 text-xs mt-1">{referralFieldErrors.urgency}</p>}
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Referral Notes</label>
                 <textarea
                   rows={3}
                   value={referralForm.referral_notes}
-                  onChange={e => setReferralForm(prev => ({ ...prev, referral_notes: e.target.value }))}
+                  onChange={e => {setReferralForm(prev => ({ ...prev, referral_notes: e.target.value })); setReferralFieldErrors(prev => ({...prev, referral_notes: undefined}));}}
                   placeholder="Clinical summary, reason for referral, relevant findings…"
-                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-400"
+                  className={`w-full px-3 py-2.5 border ${referralFieldErrors.referral_notes ? 'border-red-500 bg-red-50' : 'border-slate-300'} rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-400`}
                 />
+                {referralFieldErrors.referral_notes && <p className="text-red-500 text-xs mt-1">{referralFieldErrors.referral_notes}</p>}
               </div>
               <div className="flex flex-row-reverse gap-3 pt-2">
-                <button type="submit" disabled={referralLoading || !referralForm.target_specialty}
+                <button type="submit" disabled={referralLoading}
                   className="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm font-bold transition disabled:opacity-60 flex items-center gap-2">
                   {referralLoading && <Loader2 size={14} className="animate-spin" />}
                   Create Referral

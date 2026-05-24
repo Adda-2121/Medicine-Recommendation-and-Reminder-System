@@ -3,7 +3,6 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../contexts/AuthContext';
 import api from '../services/api';
-import LanguageSwitcher from './common/LanguageSwitcher';
 import NotificationBell from './common/NotificationBell';
 import { 
   LayoutDashboard, 
@@ -14,7 +13,8 @@ import {
   UserCircle, 
   LogOut, 
   Activity,
-  Search
+  Search,
+  Home
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -113,9 +113,21 @@ const Sidebar = () => {
         </ul>
       </nav>
 
-      {/* Bottom Area (Language + Logout) */}
+      {/* Bottom Area (Logout) */}
       <div className="p-4 border-t border-slate-800 flex flex-col gap-3">
-        <LanguageSwitcher />
+        <NavLink
+          to="/"
+          className={({ isActive }) =>
+            `flex items-center w-full px-3 py-2.5 rounded-lg transition-colors ${
+              isActive
+                ? 'bg-slate-700 text-white'
+                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+            }`
+          }
+        >
+          <Home size={20} className="mr-3 shrink-0" />
+          <span className="font-medium text-sm">Home Page</span>
+        </NavLink>
         <button
           onClick={handleLogout}
           className="flex items-center w-full px-3 py-2.5 rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors group"

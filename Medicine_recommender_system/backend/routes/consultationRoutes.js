@@ -9,11 +9,16 @@ const {
   resumeConsultation,
   referToSpecialist,
   getTriageRules,
+  clearHistory,
+  getReferralDetails,
 } = require('../controllers/consultationController');
 const { protect, authorize } = require('../middlewares/authMiddleware');
 
 // Public — triage rules for the booking form
 router.get('/triage-rules', getTriageRules);
+
+// Patient clears their completed consultation history
+router.delete('/history', protect, authorize('patient'), clearHistory);
 
 router.route('/')
   .post(protect, requestConsultation)
@@ -30,6 +35,9 @@ router.put('/:id/resume', protect, authorize('doctor'), resumeConsultation);
 
 // GP refers patient to a specialist
 router.post('/:id/refer', protect, authorize('doctor'), referToSpecialist);
+
+// Get referral details for specialist/patient
+router.get('/:id/referral', protect, getReferralDetails);
 
 // Only admins can manually assign.
 router.put('/:id/assign', protect, authorize('company_admin'), assignDoctor);

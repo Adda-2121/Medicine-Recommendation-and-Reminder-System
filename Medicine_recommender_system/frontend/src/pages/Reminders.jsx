@@ -5,6 +5,7 @@ import { Bell, Plus, Clock, Pill, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
 import ConfirmationModal from '../components/common/ConfirmationModal';
+import { reminderSchema, formatZodErrors } from '../utils/validationSchemas';
 
 const Reminders = () => {
   const { t } = useTranslation();
@@ -12,6 +13,7 @@ const Reminders = () => {
   const [reminders, setReminders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
   
   const [modalConfig, setModalConfig] = useState({ isOpen: false, id: null });
   
@@ -46,6 +48,19 @@ const Reminders = () => {
 
   const handleAddReminder = async (e) => {
     e.preventDefault();
+    setFieldErrors({});
+
+    const dataToValidate = {
+      ...newReminder,
+      patient_id: user.role === 'patient' ? user.id.toString() : newReminder.patient_id.toString()
+    };
+
+    const result = reminderSchema.safeParse(dataToValidate);
+    if (!result.success) {
+      setFieldErrors(formatZodErrors(result.error));
+      return;
+    }
+
     try {
       await api.post('/reminders', newReminder);
       setShowForm(false);
@@ -87,7 +102,7 @@ const Reminders = () => {
           </p>
         </div>
         <button 
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => { setShowForm(!showForm); setFieldErrors({}); }}
           className="bg-primary-600 text-white px-5 py-2.5 rounded-lg flex items-center hover:bg-primary-700 transition shadow-sm font-medium"
         >
           {showForm ? t('reminders.cancel') : <><Plus size={20} className="mr-2" /> {t('reminders.addReminder')}</>}
@@ -104,10 +119,11 @@ const Reminders = () => {
               <div>
                  <label className="block text-sm font-medium text-slate-700 mb-1">{t('reminders.patientId')}</label>
                  <input 
-                   type="number" required
-                   className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                   type="number"
+                   className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.patient_id ? 'border-red-500' : 'border-slate-300'}`}
                    value={newReminder.patient_id} onChange={(e) => setNewReminder({...newReminder, patient_id: e.target.value})}
                  />
+                 {fieldErrors.patient_id && <p className="text-red-500 text-xs mt-1">{fieldErrors.patient_id}</p>}
               </div>
             )}
             {user.role !== 'patient' && (
@@ -135,10 +151,11 @@ const Reminders = () => {
               <div>
                  <label className="block text-sm font-medium text-slate-700 mb-1">{t('reminders.dateTime')}</label>
                  <input 
-                   type="datetime-local" required
-                   className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                   type="datetime-local"
+                   className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.scheduled_time ? 'border-red-500' : 'border-slate-300'}`}
                    value={newReminder.scheduled_time} onChange={(e) => setNewReminder({...newReminder, scheduled_time: e.target.value})}
                  />
+                 {fieldErrors.scheduled_time && <p className="text-red-500 text-xs mt-1">{fieldErrors.scheduled_time}</p>}
               </div>
             </div>
             
@@ -148,9 +165,10 @@ const Reminders = () => {
                   <label className="block text-sm font-medium text-slate-700 mb-1">{t('reminders.medicineName')}</label>
                   <input
                     type="text" placeholder={t('reminders.medicineNamePlaceholder')} 
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.medicine_name ? 'border-red-500' : 'border-slate-300'}`}
                     value={newReminder.medicine_name} onChange={(e) => setNewReminder({...newReminder, medicine_name: e.target.value})}
                   />
+                  {fieldErrors.medicine_name && <p className="text-red-500 text-xs mt-1">{fieldErrors.medicine_name}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">{t('reminders.medicineType')}</label>

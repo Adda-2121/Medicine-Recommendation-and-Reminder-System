@@ -19,14 +19,25 @@ const Prescription = sequelize.define('Prescription', {
     type: DataTypes.UUID,
     allowNull: false,
   },
+  // null when entry_type = 'counseling'
   drug_id: {
     type: DataTypes.UUID,
-    allowNull: false,
+    allowNull: true,
   },
   instructions: {
     type: DataTypes.TEXT,
     allowNull: true,
-  }
+  },
+  // Psychological / counseling note — used when no drug is prescribed
+  counseling_note: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  entry_type: {
+    type: DataTypes.ENUM('medication', 'counseling'),
+    defaultValue: 'medication',
+    allowNull: false,
+  },
 }, {
   timestamps: true,
   createdAt: 'created_at',

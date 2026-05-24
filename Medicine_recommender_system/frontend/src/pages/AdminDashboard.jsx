@@ -6,6 +6,15 @@ import toast from 'react-hot-toast';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import RowMenu from '../components/common/RowMenu';
 import ReasonModal from '../components/common/ReasonModal';
+import { 
+  adminDoctorSchema, 
+  adminEditDoctorSchema, 
+  adminSpecialistSchema, 
+  adminEditSpecialistSchema, 
+  addCategorySchema, 
+  addServiceItemSchema, 
+  formatZodErrors 
+} from '../utils/validationSchemas';
 
 // Sub-components for tabs
 const OverviewTab = ({ stats }) => (
@@ -93,6 +102,7 @@ const DoctorsTab = () => {
   });
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [statusFilter, setStatusFilter] = useState('all');
   
   const [modalConfig, setModalConfig] = useState({ isOpen: false, doctorId: null });
@@ -101,6 +111,7 @@ const DoctorsTab = () => {
   const [editDoctor, setEditDoctor] = useState(null); // doctor being edited
   const [editForm, setEditForm] = useState({ name: '', email: '', specialty: '', license_number: '', experience_years: '', current_workplace: '' });
   const [editLoading, setEditLoading] = useState(false);
+  const [editFieldErrors, setEditFieldErrors] = useState({});
 
   // Reason modal state (reject / suspend)
   const [reasonModal, setReasonModal] = useState({ isOpen: false, action: null }); // action: 'rejected' | 'suspended'
@@ -124,6 +135,14 @@ const DoctorsTab = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
+    
+    const result = adminDoctorSchema.safeParse(formData);
+    if (!result.success) {
+      setFieldErrors(formatZodErrors(result.error));
+      return;
+    }
+
     setFormLoading(true);
     try {
       await api.post('/users', { ...formData, role: 'doctor' });
@@ -131,6 +150,7 @@ const DoctorsTab = () => {
         name: '', email: '', password: '',
         specialty: '', license_number: '', experience_years: ''
       });
+      setFieldErrors({});
       setShowForm(false);
       fetchDoctors();
     } catch (err) {
@@ -176,10 +196,19 @@ const DoctorsTab = () => {
       experience_years: doctor.experience_years || '',
       current_workplace: doctor.current_workplace || '',
     });
+    setEditFieldErrors({});
   };
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
+    setEditFieldErrors({});
+
+    const result = adminEditDoctorSchema.safeParse(editForm);
+    if (!result.success) {
+      setEditFieldErrors(formatZodErrors(result.error));
+      return;
+    }
+
     setEditLoading(true);
     try {
       await api.put(`/users/${editDoctor.id}`, editForm);
@@ -243,50 +272,56 @@ const DoctorsTab = () => {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
                 <input
-                  type="text" required placeholder="Dr. Jane Doe"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  type="text" placeholder="Dr. Jane Doe"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.name ? 'border-red-500' : 'border-slate-300'}`}
                   value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
+                {fieldErrors.name && <p className="text-red-500 text-xs mt-1">{fieldErrors.name}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
                 <input
-                  type="email" required placeholder="jane.doe@hospital.com"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  type="email" placeholder="jane.doe@hospital.com"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.email ? 'border-red-500' : 'border-slate-300'}`}
                   value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 />
+                {fieldErrors.email && <p className="text-red-500 text-xs mt-1">{fieldErrors.email}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Specialty</label>
                 <input
-                  type="text" required placeholder="e.g. Cardiology, Pediatrics"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  type="text" placeholder="e.g. Cardiology, Pediatrics"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.specialty ? 'border-red-500' : 'border-slate-300'}`}
                   value={formData.specialty} onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
                 />
+                {fieldErrors.specialty && <p className="text-red-500 text-xs mt-1">{fieldErrors.specialty}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Medical License Number</label>
                 <input
-                  type="text" required placeholder="e.g. MED-12345678"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  type="text" placeholder="e.g. MED-12345678"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.license_number ? 'border-red-500' : 'border-slate-300'}`}
                   value={formData.license_number} onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
                 />
+                {fieldErrors.license_number && <p className="text-red-500 text-xs mt-1">{fieldErrors.license_number}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Years of Experience</label>
                 <input
-                  type="number" required min="0" placeholder="e.g. 10"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  type="number" min="0" placeholder="e.g. 10"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.experience_years ? 'border-red-500' : 'border-slate-300'}`}
                   value={formData.experience_years} onChange={(e) => setFormData({ ...formData, experience_years: e.target.value })}
                 />
+                {fieldErrors.experience_years && <p className="text-red-500 text-xs mt-1">{fieldErrors.experience_years}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Temporary Password</label>
                 <input
-                  type="password" required minLength={6}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  type="password"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.password ? 'border-red-500' : 'border-slate-300'}`}
                   value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 />
+                {fieldErrors.password && <p className="text-red-500 text-xs mt-1">{fieldErrors.password}</p>}
               </div>
             </div>
 
@@ -619,33 +654,39 @@ const DoctorsTab = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Full Name</label>
-                  <input type="text" required value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  <input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})}
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editFieldErrors.name ? 'border-red-500' : 'border-slate-300'}`} />
+                  {editFieldErrors.name && <p className="text-red-500 text-xs mt-1">{editFieldErrors.name}</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Email</label>
-                  <input type="email" required value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  <input type="email" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})}
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editFieldErrors.email ? 'border-red-500' : 'border-slate-300'}`} />
+                  {editFieldErrors.email && <p className="text-red-500 text-xs mt-1">{editFieldErrors.email}</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Specialty</label>
                   <input type="text" value={editForm.specialty} onChange={e => setEditForm({...editForm, specialty: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editFieldErrors.specialty ? 'border-red-500' : 'border-slate-300'}`} />
+                  {editFieldErrors.specialty && <p className="text-red-500 text-xs mt-1">{editFieldErrors.specialty}</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">License Number</label>
                   <input type="text" value={editForm.license_number} onChange={e => setEditForm({...editForm, license_number: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editFieldErrors.license_number ? 'border-red-500' : 'border-slate-300'}`} />
+                  {editFieldErrors.license_number && <p className="text-red-500 text-xs mt-1">{editFieldErrors.license_number}</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Experience (Years)</label>
                   <input type="number" min="0" value={editForm.experience_years} onChange={e => setEditForm({...editForm, experience_years: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editFieldErrors.experience_years ? 'border-red-500' : 'border-slate-300'}`} />
+                  {editFieldErrors.experience_years && <p className="text-red-500 text-xs mt-1">{editFieldErrors.experience_years}</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Current Workplace</label>
                   <input type="text" value={editForm.current_workplace} onChange={e => setEditForm({...editForm, current_workplace: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editFieldErrors.current_workplace ? 'border-red-500' : 'border-slate-300'}`} />
+                  {editFieldErrors.current_workplace && <p className="text-red-500 text-xs mt-1">{editFieldErrors.current_workplace}</p>}
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-2">
@@ -1222,6 +1263,7 @@ const SpecialistsTab = () => {
   const [formData, setFormData] = useState({ name: '', email: '', password: '', work_location: '', specializations: [], role: 'laboratorist' });
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   
   const [modalConfig, setModalConfig] = useState({ isOpen: false, specialistId: null });
 
@@ -1229,6 +1271,7 @@ const SpecialistsTab = () => {
   const [editSpec, setEditSpec] = useState(null);
   const [editSpecForm, setEditSpecForm] = useState({ name: '', email: '', work_location: '', specializations: [] });
   const [editSpecLoading, setEditSpecLoading] = useState(false);
+  const [editSpecFieldErrors, setEditSpecFieldErrors] = useState({});
 
   const fetchData = async () => {
     try {
@@ -1264,9 +1307,11 @@ const SpecialistsTab = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
     
-    if (formData.specializations.length === 0) {
-      setError('Please select at least one specialization category.');
+    const result = adminSpecialistSchema.safeParse(formData);
+    if (!result.success) {
+      setFieldErrors(formatZodErrors(result.error));
       return;
     }
 
@@ -1274,6 +1319,7 @@ const SpecialistsTab = () => {
     try {
       await api.post('/users', { ...formData, is_verified: true });
       setFormData({ name: '', email: '', password: '', work_location: '', specializations: [], role: 'laboratorist' });
+      setFieldErrors({});
       setShowForm(false);
       fetchData();
     } catch (err) {
@@ -1305,10 +1351,19 @@ const SpecialistsTab = () => {
       work_location: spec.work_location || '',
       specializations: spec.specializations || [],
     });
+    setEditSpecFieldErrors({});
   };
 
   const handleEditSpecSubmit = async (e) => {
     e.preventDefault();
+    setEditSpecFieldErrors({});
+
+    const result = adminEditSpecialistSchema.safeParse({ ...editSpecForm, role: editSpec.role });
+    if (!result.success) {
+      setEditSpecFieldErrors(formatZodErrors(result.error));
+      return;
+    }
+
     setEditSpecLoading(true);
     try {
       await api.put(`/users/${editSpec.id}`, editSpecForm);
@@ -1353,44 +1408,49 @@ const SpecialistsTab = () => {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
                 <input
-                  type="text" required placeholder="John Doe"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  type="text" placeholder="Addisu Gebeyehu"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.name ? 'border-red-500' : 'border-slate-300'}`}
                   value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
+                {fieldErrors.name && <p className="text-red-500 text-xs mt-1">{fieldErrors.name}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
                 <select
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.role ? 'border-red-500' : 'border-slate-300'}`}
                   value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                 >
                   <option value="laboratorist">Laboratorist</option>
                   <option value="radiologist">Radiologist</option>
                 </select>
+                {fieldErrors.role && <p className="text-red-500 text-xs mt-1">{fieldErrors.role}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
                 <input
-                  type="email" required placeholder="john.doe@hospital.com"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  type="email" placeholder="addisu.gebeyehu@hospital.com"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.email ? 'border-red-500' : 'border-slate-300'}`}
                   value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 />
+                {fieldErrors.email && <p className="text-red-500 text-xs mt-1">{fieldErrors.email}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Assigned Work Location / Room</label>
                 <input
-                  type="text" required placeholder="e.g. Room 101, Radiology Unit"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  type="text" placeholder="e.g. Room 101, Radiology Unit"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.work_location ? 'border-red-500' : 'border-slate-300'}`}
                   value={formData.work_location} onChange={(e) => setFormData({ ...formData, work_location: e.target.value })}
                 />
+                {fieldErrors.work_location && <p className="text-red-500 text-xs mt-1">{fieldErrors.work_location}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Temporary Password</label>
                 <input
-                  type="password" required minLength={6}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  type="password"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.password ? 'border-red-500' : 'border-slate-300'}`}
                   value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 />
+                {fieldErrors.password && <p className="text-red-500 text-xs mt-1">{fieldErrors.password}</p>}
               </div>
             </div>
             
@@ -1409,6 +1469,7 @@ const SpecialistsTab = () => {
                   </label>
                 ))}
                 {categories.length === 0 && <span className="text-slate-500 text-sm">Please configure service categories first.</span>}
+                {fieldErrors.specializations && <p className="text-red-500 text-xs w-full mt-1">{fieldErrors.specializations}</p>}
               </div>
             </div>
 
@@ -1495,18 +1556,21 @@ const SpecialistsTab = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Full Name</label>
-                  <input type="text" required value={editSpecForm.name} onChange={e => setEditSpecForm({...editSpecForm, name: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  <input type="text" value={editSpecForm.name} onChange={e => setEditSpecForm({...editSpecForm, name: e.target.value})}
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editSpecFieldErrors.name ? 'border-red-500' : 'border-slate-300'}`} />
+                  {editSpecFieldErrors.name && <p className="text-red-500 text-xs mt-1">{editSpecFieldErrors.name}</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Email</label>
-                  <input type="email" required value={editSpecForm.email} onChange={e => setEditSpecForm({...editSpecForm, email: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  <input type="email" value={editSpecForm.email} onChange={e => setEditSpecForm({...editSpecForm, email: e.target.value})}
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editSpecFieldErrors.email ? 'border-red-500' : 'border-slate-300'}`} />
+                  {editSpecFieldErrors.email && <p className="text-red-500 text-xs mt-1">{editSpecFieldErrors.email}</p>}
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs font-medium text-slate-600 mb-1">Work Location / Room</label>
                   <input type="text" value={editSpecForm.work_location} onChange={e => setEditSpecForm({...editSpecForm, work_location: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editSpecFieldErrors.work_location ? 'border-red-500' : 'border-slate-300'}`} />
+                  {editSpecFieldErrors.work_location && <p className="text-red-500 text-xs mt-1">{editSpecFieldErrors.work_location}</p>}
                 </div>
               </div>
               <div>
@@ -1518,6 +1582,7 @@ const SpecialistsTab = () => {
                       {cat.name}
                     </label>
                   ))}
+                  {editSpecFieldErrors.specializations && <p className="text-red-500 text-xs w-full mt-1">{editSpecFieldErrors.specializations}</p>}
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-2">
@@ -1554,9 +1619,11 @@ const ServicesTab = () => {
   // Form states
   const [showCatForm, setShowCatForm] = useState(false);
   const [catForm, setCatForm] = useState({ id: null, name: '', department_type: 'laboratory', isEditing: false });
+  const [catFieldErrors, setCatFieldErrors] = useState({});
   
   const [showItemForm, setShowItemForm] = useState(false);
   const [itemForm, setItemForm] = useState({ id: null, name: '', category_id: '', price: 0, is_active: true, isEditing: false });
+  const [itemFieldErrors, setItemFieldErrors] = useState({});
 
   const [modalConfig, setModalConfig] = useState({ isOpen: false, type: null, id: null });
 
@@ -1580,6 +1647,14 @@ const ServicesTab = () => {
 
   const handleCatSubmit = async (e) => {
     e.preventDefault();
+    setCatFieldErrors({});
+
+    const result = addCategorySchema.safeParse(catForm);
+    if (!result.success) {
+      setCatFieldErrors(formatZodErrors(result.error));
+      return;
+    }
+
     try {
       if (catForm.isEditing) {
         await api.put(`/services/categories/${catForm.id}`, catForm);
@@ -1589,6 +1664,7 @@ const ServicesTab = () => {
         toast.success('Category created successfully');
       }
       setCatForm({ id: null, name: '', department_type: 'laboratory', isEditing: false });
+      setCatFieldErrors({});
       setShowCatForm(false);
       fetchData();
     } catch (err) { toast.error('Failed to save category'); }
@@ -1596,6 +1672,14 @@ const ServicesTab = () => {
 
   const handleItemSubmit = async (e) => {
     e.preventDefault();
+    setItemFieldErrors({});
+
+    const result = addServiceItemSchema.safeParse(itemForm);
+    if (!result.success) {
+      setItemFieldErrors(formatZodErrors(result.error));
+      return;
+    }
+
     try {
       if (itemForm.isEditing) {
         await api.put(`/services/items/${itemForm.id}`, itemForm);
@@ -1605,6 +1689,7 @@ const ServicesTab = () => {
         toast.success('Service item created successfully');
       }
       setItemForm({ id: null, name: '', category_id: '', price: 0, is_active: true, isEditing: false });
+      setItemFieldErrors({});
       setShowItemForm(false);
       fetchData();
     } catch (err) { toast.error('Failed to save service item'); }
@@ -1633,11 +1718,13 @@ const ServicesTab = () => {
   };
 
   const handleEditCategory = (cat) => {
+    setCatFieldErrors({});
     setCatForm({ id: cat.id, name: cat.name, department_type: cat.department_type, isEditing: true });
     setShowCatForm(true);
   };
 
   const handleEditItem = (item) => {
+    setItemFieldErrors({});
     setItemForm({ id: item.id, name: item.name, category_id: item.category_id, price: item.price, is_active: item.is_active, isEditing: true });
     setShowItemForm(true);
   };
@@ -1651,6 +1738,7 @@ const ServicesTab = () => {
             <p className="text-slate-500 text-sm mt-1">Manage Lab and Radiology categories.</p>
           </div>
           <button onClick={() => {
+            setCatFieldErrors({});
             setCatForm({ id: null, name: '', department_type: 'laboratory', isEditing: false });
             setShowCatForm(!showCatForm);
           }} className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 transition text-sm">
@@ -1660,9 +1748,10 @@ const ServicesTab = () => {
         
         {showCatForm && (
           <form onSubmit={handleCatSubmit} className="mb-6 bg-slate-50 p-4 rounded-lg flex space-x-4 items-end">
-            <div className="flex-1">
+            <div className="flex-1 relative">
               <label className="block text-sm font-medium mb-1">Category Name</label>
-              <input type="text" required value={catForm.name} onChange={e => setCatForm({...catForm, name: e.target.value})} className="w-full px-3 py-2 border rounded focus:ring-primary-500 outline-none" />
+              <input type="text" value={catForm.name} onChange={e => setCatForm({...catForm, name: e.target.value})} className={`w-full px-3 py-2 border rounded focus:ring-primary-500 outline-none ${catFieldErrors.name ? 'border-red-500' : 'border-slate-300'}`} />
+              {catFieldErrors.name && <p className="text-red-500 text-xs absolute -bottom-4">{catFieldErrors.name}</p>}
             </div>
             <div className="flex-1">
               <label className="block text-sm font-medium mb-1">Department</label>
@@ -1702,6 +1791,7 @@ const ServicesTab = () => {
             <p className="text-slate-500 text-sm mt-1">Manage individual tests/services and their costs.</p>
           </div>
           <button onClick={() => {
+            setItemFieldErrors({});
             setItemForm({ id: null, name: '', category_id: '', price: 0, is_active: true, isEditing: false });
             setShowItemForm(!showItemForm);
           }} className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 transition text-sm">
@@ -1711,22 +1801,25 @@ const ServicesTab = () => {
 
         {showItemForm && (
           <form onSubmit={handleItemSubmit} className="mb-6 bg-slate-50 p-4 rounded-lg flex flex-wrap gap-4 items-end">
-            <div className="flex-1 min-w-[200px]">
+            <div className="flex-1 min-w-[200px] relative pb-2">
               <label className="block text-sm font-medium mb-1">Service Name</label>
-              <input type="text" required value={itemForm.name} onChange={e => setItemForm({...itemForm, name: e.target.value})} className="w-full px-3 py-2 border rounded focus:ring-primary-500 outline-none" placeholder="e.g. Chest X-Ray" />
+              <input type="text" value={itemForm.name} onChange={e => setItemForm({...itemForm, name: e.target.value})} className={`w-full px-3 py-2 border rounded focus:ring-primary-500 outline-none ${itemFieldErrors.name ? 'border-red-500' : 'border-slate-300'}`} placeholder="e.g. Chest X-Ray" />
+              {itemFieldErrors.name && <p className="text-red-500 text-xs absolute bottom-0 left-0">{itemFieldErrors.name}</p>}
             </div>
-            <div className="flex-1 min-w-[200px]">
+            <div className="flex-1 min-w-[200px] relative pb-2">
               <label className="block text-sm font-medium mb-1">Category</label>
-              <select required value={itemForm.category_id} onChange={e => setItemForm({...itemForm, category_id: e.target.value})} className="w-full px-3 py-2 border rounded outline-none">
+              <select value={itemForm.category_id} onChange={e => setItemForm({...itemForm, category_id: e.target.value})} className={`w-full px-3 py-2 border rounded outline-none ${itemFieldErrors.category_id ? 'border-red-500' : 'border-slate-300'}`}>
                 <option value="">Select Category</option>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name} ({c.department_type})</option>)}
               </select>
+              {itemFieldErrors.category_id && <p className="text-red-500 text-xs absolute bottom-0 left-0">{itemFieldErrors.category_id}</p>}
             </div>
-            <div className="w-32">
+            <div className="w-32 relative pb-2">
               <label className="block text-sm font-medium mb-1">Price (Birr)</label>
-              <input type="number" required min="0" value={itemForm.price} onChange={e => setItemForm({...itemForm, price: e.target.value})} className="w-full px-3 py-2 border rounded outline-none" />
+              <input type="number" min="0" value={itemForm.price} onChange={e => setItemForm({...itemForm, price: e.target.value})} className={`w-full px-3 py-2 border rounded outline-none ${itemFieldErrors.price ? 'border-red-500' : 'border-slate-300'}`} />
+              {itemFieldErrors.price && <p className="text-red-500 text-xs absolute bottom-0 left-0">{itemFieldErrors.price}</p>}
             </div>
-            <button type="submit" className="bg-emerald-600 text-white px-6 py-2 rounded hover:bg-emerald-700 transition mb-0.5">
+            <button type="submit" className="bg-emerald-600 text-white px-6 py-2 rounded hover:bg-emerald-700 transition mb-2">
               {itemForm.isEditing ? 'Update' : 'Save'}
             </button>
           </form>

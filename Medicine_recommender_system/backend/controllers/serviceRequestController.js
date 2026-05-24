@@ -88,12 +88,15 @@ exports.requestService = async (req, res) => {
 
     // Notify specialist
     if (assignedSpecialistId) {
+      // Find the specialist's role to build the correct redirect URL
+      const specialist = await User.findByPk(assignedSpecialistId, { attributes: ['role'] });
+      const specialistPath = specialist?.role === 'radiologist' ? 'radiologist' : 'laboratorist';
       await sendPushNotification(
         assignedSpecialistId,
         'New Request Assigned',
         'A new medical request has been routed to you.',
         'service_request',
-        '/specialist'
+        `/${specialistPath}?req_id=${serviceRequest.id}`
       );
     }
 
@@ -185,6 +188,34 @@ exports.updateRequestStatus = async (req, res) => {
     }
 
     await serviceReq.save();
+
+    // Notify in real-time: the specialist's own queue count + all patients queued behind this request
+    if (global.io) {
+      // Notify the specialist so their queue count decreases
+      global.io.to(`user_${serviceReq.specialist_id}`).emit('queue_updated');
+
+      // Notify the patient of this request
+      if (serviceReq.patient_id) {
+        global.io.to(`user_${serviceReq.patient_id}`).emit('queue_updated');
+      }
+
+      // Notify all other patients queued with the same specialist so their position updates
+      const affectedRequests = await ServiceRequest.findAll({
+        where: {
+          specialist_id: serviceReq.specialist_id,
+          status: { [Op.in]: ['pending', 'in_progress'] },
+          payment_status: 'paid'
+        },
+        attributes: ['patient_id']
+      });
+      const notified = new Set([serviceReq.patient_id, serviceReq.specialist_id]);
+      for (const r of affectedRequests) {
+        if (r.patient_id && !notified.has(r.patient_id)) {
+          global.io.to(`user_${r.patient_id}`).emit('queue_updated');
+          notified.add(r.patient_id);
+        }
+      }
+    }
 
     if (req.file) {
       const { sendPushNotification } = require('../utils/pushHelper');

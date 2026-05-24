@@ -88,6 +88,10 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  room_number: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   license_number: {
     type: DataTypes.STRING,
     allowNull: true,

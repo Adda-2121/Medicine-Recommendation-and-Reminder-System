@@ -119,6 +119,19 @@ if (models.Prescription) {
   }
 }
 
+if (models.Referral) {
+  models.Referral.belongsTo(models.User, { as: 'Patient', foreignKey: 'patient_id' });
+  models.Referral.belongsTo(models.User, { as: 'GP', foreignKey: 'gp_id' });
+  models.Referral.belongsTo(models.User, { as: 'Specialist', foreignKey: 'specialist_id' });
+  models.Referral.belongsTo(models.Consultation, { as: 'GpConsultation', foreignKey: 'gp_consultation_id' });
+  models.Referral.belongsTo(models.Consultation, { as: 'SpecialistConsultation', foreignKey: 'specialist_consultation_id' });
+
+  if (models.Consultation) {
+    models.Consultation.hasOne(models.Referral, { as: 'ReferralDetails', foreignKey: 'specialist_consultation_id' });
+    models.Consultation.hasOne(models.Referral, { as: 'OriginatingReferral', foreignKey: 'gp_consultation_id' });
+  }
+}
+
 models.sequelize = sequelize;
 models.Setting = require('./Setting');
 models.Testimonial = require('./Testimonial');

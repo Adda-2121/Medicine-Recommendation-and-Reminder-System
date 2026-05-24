@@ -52,6 +52,10 @@ const Consultations = () => {
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  // Referral flow state
+  const [referralInfo, setReferralInfo] = useState(null);
+  const [loadingReferral, setLoadingReferral] = useState(false);
+
   // Chat Modes
   const [activeChatType, setActiveChatType] = useState('patient');
 
@@ -109,6 +113,7 @@ const Consultations = () => {
   const [drugSearchQuery, setDrugSearchQuery] = useState('');
   const [drugSearchResults, setDrugSearchResults] = useState([]);
   const [selectedDrugs, setSelectedDrugs] = useState([]);
+  const [counselingNotes, setCounselingNotes] = useState(['']);
   const [isPrescribing, setIsPrescribing] = useState(false);
   
   const [modalConfig, setModalConfig] = useState({ isOpen: false, reqId: null });
@@ -183,6 +188,24 @@ const Consultations = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (activeChatId) {
+      setLoadingReferral(true);
+      api.get(`/consultations/${activeChatId}/referral`)
+        .then(res => {
+          setReferralInfo(res.data);
+        })
+        .catch(err => {
+          setReferralInfo(null);
+        })
+        .finally(() => {
+          setLoadingReferral(false);
+        });
+    } else {
+      setReferralInfo(null);
+    }
+  }, [activeChatId]);
 
   useEffect(() => {
     if (activeChatId) {
@@ -488,20 +511,13 @@ const Consultations = () => {
       setServiceReqs(res.data);
 
       const item = availableServices.find(s => s.id === serviceRequestForm.service_item_id);
-      const chatType = item?.Category?.department_type === 'radiology' ? 'radiologist' : 'laboratorist';
 
+      // Notify patient chat once
       socket.emit('send_message', {
         consultation_id: activeChatId,
         sender_id: user.id,
         message: `Medical Service Requested: ${item?.name}\nInstructions: ${serviceRequestForm.instructions || 'None'}`,
         chat_type: 'patient'
-      });
-
-      socket.emit('send_message', {
-        consultation_id: activeChatId,
-        sender_id: user.id,
-        message: `Medical Service Requested: ${item?.name}\nInstructions: ${serviceRequestForm.instructions || 'None'}`,
-        chat_type: chatType
       });
     } catch (err) {
       console.error(err);
@@ -617,25 +633,31 @@ const Consultations = () => {
 
   const handlePrescribeSubmit = async (e) => {
     e.preventDefault();
-    if (selectedDrugs.length === 0 || !activeChatId) return;
+    const filledNotes = counselingNotes.filter(n => n.trim());
+    if (selectedDrugs.length === 0 && filledNotes.length === 0 || !activeChatId) return;
     setIsPrescribing(true);
     try {
       await api.post('/prescriptions', {
         consultation_id: activeChatId,
         patient_id: activeConsultation.patient_id,
-        drugs: selectedDrugs.map(d => ({ drug_id: d.id, instructions: d.instructions }))
+        drugs: selectedDrugs.map(d => ({ drug_id: d.id, instructions: d.instructions })),
+        counseling_notes: filledNotes,
       });
       toast.success('Prescription created successfully!');
       setShowPrescribeModal(false);
       setSelectedDrugs([]);
+      setCounselingNotes(['']);
       // Refresh prescriptions
       const res = await api.get(`/prescriptions/consultation/${activeChatId}`);
       setPrescriptions(res.data);
 
+      const parts = [];
+      if (selectedDrugs.length > 0) parts.push(`${selectedDrugs.length} medication(s)`);
+      if (filledNotes.length > 0) parts.push(`${filledNotes.length} counseling note(s)`);
       socket.emit('send_message', {
         consultation_id: activeChatId,
         sender_id: user.id,
-        message: `Prescribed ${selectedDrugs.length} medication(s). Please check your prescription details.`,
+        message: `Prescribed ${parts.join(' and ')}. Please check your prescription details.`,
         chat_type: 'patient'
       });
     } catch (err) {
@@ -854,7 +876,7 @@ const Consultations = () => {
                     <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-4 flex items-center justify-between">
                       <div>
                         <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide">Consultation Fee</p>
-                        <p className="text-xs text-emerald-600 mt-0.5">{specialty} · 1-week access</p>
+                        <p className="text-xs text-emerald-600 mt-0.5">{specialty} · per consultation</p>
                       </div>
                       <span className="text-2xl font-bold text-emerald-700">{Number(feeAmount).toLocaleString()} <span className="text-base font-semibold">ETB</span></span>
                     </div>
@@ -982,86 +1004,198 @@ const Consultations = () => {
             {(!activeConsultation.Payment || activeConsultation.Payment.status !== 'verified') ? (
               <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-100 overflow-y-auto">
                 {user.role === 'patient' ? (
-                  <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-                    <div className="flex justify-center mb-6">
-                      {activeConsultation.Payment?.status === 'pending' && activeConsultation.Payment?.screenshot_url ? (
-                        <div className="bg-amber-100 w-20 h-20 flex items-center justify-center rounded-full text-amber-600"><Clock size={40} /></div>
-                      ) : activeConsultation.Payment?.status === 'failed' ? (
-                        <div className="bg-red-100 w-20 h-20 flex items-center justify-center rounded-full text-red-600"><AlertCircle size={40} /></div>
-                      ) : activeConsultation.Payment?.status === 'expired' ? (
-                        <div className="bg-slate-100 w-20 h-20 flex items-center justify-center rounded-full text-slate-500"><Clock size={40} /></div>
-                      ) : (
-                        <div className="bg-primary-100 w-20 h-20 flex items-center justify-center rounded-full text-primary-600"><CreditCard size={40} /></div>
-                      )}
-                    </div>
+                  referralInfo ? (
+                    <div className="max-w-xl w-full bg-white p-8 rounded-2xl shadow-lg border border-slate-100 flex flex-col gap-6">
+                      {/* Header */}
+                      <div className="flex justify-between items-start pb-4 border-b border-slate-100">
+                        <div>
+                          <span className={`text-[10px] uppercase font-extrabold tracking-wider px-2.5 py-1 rounded-full inline-block
+                            ${referralInfo.referral?.urgency === 'emergency' ? 'bg-red-50 text-red-600 border border-red-200' :
+                              referralInfo.referral?.urgency === 'urgent' ? 'bg-amber-50 text-amber-600 border border-amber-200' :
+                              'bg-emerald-50 text-emerald-600 border border-emerald-200'}`}>
+                            {referralInfo.referral?.urgency || 'routine'} Urgency
+                          </span>
+                          <h3 className="text-xl font-extrabold text-slate-800 mt-2">Specialist Referral</h3>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xs text-slate-400">Date</span>
+                          <p className="text-sm font-semibold text-slate-700">{referralInfo.referral?.created_at ? new Date(referralInfo.referral.created_at).toLocaleDateString() : 'N/A'}</p>
+                        </div>
+                      </div>
 
-                    {activeConsultation.Payment?.status === 'pending' && activeConsultation.Payment?.chapa_tx_ref ? (
-                      <div className="text-center">
-                        <h3 className="text-xl font-bold text-slate-800 mb-2">Payment In Progress</h3>
-                        <p className="text-slate-600 border border-amber-200 bg-amber-50 p-3 rounded-lg mb-5 text-sm leading-relaxed text-amber-800">
-                          We are waiting for Chapa to confirm your payment. If you have already paid, click the button below to refresh the status.
-                        </p>
+                      {/* Doctor Card */}
+                      <div className="bg-slate-50 border border-slate-150 p-4 rounded-xl flex items-center gap-4">
+                        <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl flex items-center justify-center text-white text-xl font-bold shadow-md shrink-0">
+                          {referralInfo.referral?.Specialist?.name?.charAt(0) || 'S'}
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Assigned Specialist</p>
+                          <p className="font-bold text-slate-800">Dr. {referralInfo.referral?.Specialist?.name || 'TBD'}</p>
+                          <p className="text-xs text-slate-500 mt-0.5">{referralInfo.referral?.specialty} Specialty</p>
+                        </div>
+                        {referralInfo.referral?.Specialist && (
+                          <div className="bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-center shadow-sm">
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Room</p>
+                            <p className="font-extrabold text-slate-800 text-sm">
+                              {referralInfo.referral?.Specialist?.room_number || referralInfo.referral?.Specialist?.work_location || 'N/A'}
+                            </p>
+                          </div>
+                        )}
+                      </div>
 
-                        <div className="flex space-x-3 mt-5 w-full">
+                      {/* GP Summary */}
+                      <div className="bg-slate-50 border border-slate-150 p-4 rounded-xl">
+                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1.5">GP Referral Summary</p>
+                        <p className="text-sm text-slate-700 italic">"{referralInfo.referral?.referral_note}"</p>
+                      </div>
+
+                      {/* Pricing Details */}
+                      <div className="border border-slate-100 rounded-xl p-4 flex flex-col gap-2">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-500">Standard Specialist Fee</span>
+                          <span className="font-semibold text-slate-700">
+                            {Number(referralInfo.referral?.remaining_payment || 0) + Number(referralInfo.referral?.discount_amount || 0)} ETB
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm text-emerald-600 font-medium">
+                          <span>Referral Discount (20%)</span>
+                          <span>-{referralInfo.referral?.discount_amount || 0} ETB</span>
+                        </div>
+                        <div className="h-px bg-slate-100 my-1" />
+                        <div className="flex justify-between items-center">
+                          <span className="font-bold text-slate-800">Remaining Payment</span>
+                          <span className="text-2xl font-black text-primary-600">{referralInfo.referral?.remaining_payment || 0} ETB</span>
+                        </div>
+                      </div>
+
+                      {/* Stepper Timeline */}
+                      <div className="flex items-center gap-1.5 py-2">
+                        <div className="flex items-center gap-1">
+                          <div className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center">✓</div>
+                          <span className="text-xs font-semibold text-slate-600">GP Consult</span>
+                        </div>
+                        <div className="flex-1 h-0.5 bg-emerald-500" />
+                        <div className="flex items-center gap-1">
+                          <div className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center">✓</div>
+                          <span className="text-xs font-semibold text-slate-600">Referral</span>
+                        </div>
+                        <div className="flex-1 h-0.5 bg-slate-200" />
+                        <div className="flex items-center gap-1">
+                          <div className="w-5 h-5 rounded-full bg-indigo-500 text-white text-[10px] font-bold flex items-center justify-center animate-pulse">3</div>
+                          <span className="text-xs font-semibold text-indigo-600">Pay</span>
+                        </div>
+                        <div className="flex-1 h-0.5 bg-slate-200" />
+                        <div className="flex items-center gap-1">
+                          <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-500 text-[10px] font-bold flex items-center justify-center">4</div>
+                          <span className="text-xs font-semibold text-slate-400">Unlock</span>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex gap-3 mt-2">
+                        {activeConsultation.Payment?.status === 'pending' && activeConsultation.Payment?.chapa_tx_ref ? (
                           <button
                             onClick={handleCheckPaymentStatus}
                             disabled={isSubmittingPayment}
-                            className="w-full py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-bold transition shadow-sm disabled:opacity-50"
+                            className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold rounded-xl transition text-sm flex items-center justify-center gap-2"
                           >
-                            {isSubmittingPayment ? 'Checking...' : 'Refresh Payment Status'}
+                            <Clock size={16} className="text-amber-500" />
+                            {isSubmittingPayment ? 'Verifying...' : 'Check Payment Status'}
                           </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <h3 className="text-xl font-bold text-slate-800 mb-2 text-center">
-                          {activeConsultation.Payment?.status === 'failed' ? t('consultations.paymentFailed') :
-                            activeConsultation.Payment?.status === 'expired' ? t('consultations.accessExpired') : t('consultations.paymentRequired')}
-                        </h3>
-                        <p className="text-slate-600 text-sm text-center mb-6">
-                          {activeConsultation.Payment?.status === 'failed'
-                            ? t('consultations.paymentFailedDesc')
-                            : activeConsultation.Payment?.status === 'expired'
-                              ? t('consultations.accessExpiredDesc')
-                              : "You need an active subscription to chat with doctors. Pay once and get full access for 1 week."}
-                        </p>
-
-                        {activeConsultation.Payment?.status === 'failed' && activeConsultation.Payment?.admin_notes && (
-                          <div className="bg-red-50 text-red-700 p-3 rounded-lg mb-4 text-sm border border-red-100 text-center">
-                            <strong>{t('consultations.reason')}</strong> {activeConsultation.Payment.admin_notes}
-                          </div>
-                        )}
-
-                        <div className="space-y-5 mt-4">
-                          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 flex justify-between items-center">
-                            <div>
-                              <span className="font-bold text-slate-900 text-lg">Consultation Fee</span>
-                              {activeConsultation.consultation_type === 'specialist' && activeConsultation.target_specialty && (
-                                <p className="text-xs text-indigo-600 font-medium mt-0.5">{activeConsultation.target_specialty} Specialist</p>
-                              )}
-                              {activeConsultation.consultation_type === 'gp' && (
-                                <p className="text-xs text-primary-600 font-medium mt-0.5">General Practitioner</p>
-                              )}
-                            </div>
-                            <span className="font-bold text-primary-600 text-xl">
-                              {activeConsultation.Payment?.amount
-                                ? Number(activeConsultation.Payment.amount).toLocaleString()
-                                : globalConsultationFee} Birr
-                            </span>
-                          </div>
-                          
-                          <button 
+                        ) : (
+                          <button
                             onClick={handleChapaPayment}
-                            disabled={isSubmittingPayment} 
-                            className="w-full py-3 px-4 rounded-lg bg-[#00A859] text-white font-bold tracking-wide hover:bg-[#00904d] transition disabled:opacity-50 shadow-md flex items-center justify-center space-x-2"
+                            disabled={isSubmittingPayment}
+                            className="flex-1 py-3 bg-[#00A859] text-white hover:bg-[#00904d] font-extrabold rounded-xl transition text-sm flex items-center justify-center gap-2 shadow-md"
                           >
-                            <CreditCard size={20} />
-                            <span>{isSubmittingPayment ? 'Connecting to Chapa...' : 'Pay with Chapa'}</span>
+                            <CreditCard size={16} />
+                            {isSubmittingPayment ? 'Connecting...' : 'Pay Remaining Amount'}
                           </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+                      <div className="flex justify-center mb-6">
+                        {activeConsultation.Payment?.status === 'pending' && activeConsultation.Payment?.screenshot_url ? (
+                          <div className="bg-amber-100 w-20 h-20 flex items-center justify-center rounded-full text-amber-600"><Clock size={40} /></div>
+                        ) : activeConsultation.Payment?.status === 'failed' ? (
+                          <div className="bg-red-100 w-20 h-20 flex items-center justify-center rounded-full text-red-600"><AlertCircle size={40} /></div>
+                        ) : activeConsultation.Payment?.status === 'expired' ? (
+                          <div className="bg-slate-100 w-20 h-20 flex items-center justify-center rounded-full text-slate-500"><Clock size={40} /></div>
+                        ) : (
+                          <div className="bg-primary-100 w-20 h-20 flex items-center justify-center rounded-full text-primary-600"><CreditCard size={40} /></div>
+                        )}
+                      </div>
+
+                      {activeConsultation.Payment?.status === 'pending' && activeConsultation.Payment?.chapa_tx_ref ? (
+                        <div className="text-center">
+                          <h3 className="text-xl font-bold text-slate-800 mb-2">Payment In Progress</h3>
+                          <p className="text-slate-600 border border-amber-200 bg-amber-50 p-3 rounded-lg mb-5 text-sm leading-relaxed text-amber-800">
+                            We are waiting for Chapa to confirm your payment. If you have already paid, click the button below to refresh the status.
+                          </p>
+
+                          <div className="flex space-x-3 mt-5 w-full">
+                            <button
+                              onClick={handleCheckPaymentStatus}
+                              disabled={isSubmittingPayment}
+                              className="w-full py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-bold transition shadow-sm disabled:opacity-50"
+                            >
+                              {isSubmittingPayment ? 'Checking...' : 'Refresh Payment Status'}
+                            </button>
+                          </div>
                         </div>
-                      </>
-                    )}
-                  </div>
+                      ) : (
+                        <>
+                          <h3 className="text-xl font-bold text-slate-800 mb-2 text-center">
+                            {activeConsultation.Payment?.status === 'failed' ? t('consultations.paymentFailed') :
+                              activeConsultation.Payment?.status === 'expired' ? t('consultations.accessExpired') : t('consultations.paymentRequired')}
+                          </h3>
+                          <p className="text-slate-600 text-sm text-center mb-6">
+                            {activeConsultation.Payment?.status === 'failed'
+                              ? t('consultations.paymentFailedDesc')
+                              : activeConsultation.Payment?.status === 'expired'
+                                ? t('consultations.accessExpiredDesc')
+                                : "A one-time consultation fee is required to connect with your assigned doctor. Pay to unlock the chat for this consultation."}
+                          </p>
+
+                          {activeConsultation.Payment?.status === 'failed' && activeConsultation.Payment?.admin_notes && (
+                            <div className="bg-red-50 text-red-700 p-3 rounded-lg mb-4 text-sm border border-red-100 text-center">
+                              <strong>{t('consultations.reason')}</strong> {activeConsultation.Payment.admin_notes}
+                            </div>
+                          )}
+
+                          <div className="space-y-5 mt-4">
+                            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 flex justify-between items-center">
+                              <div>
+                                <span className="font-bold text-slate-900 text-lg">Consultation Fee</span>
+                                {activeConsultation.consultation_type === 'specialist' && activeConsultation.target_specialty && (
+                                  <p className="text-xs text-indigo-600 font-medium mt-0.5">{activeConsultation.target_specialty} Specialist</p>
+                                )}
+                                {activeConsultation.consultation_type === 'gp' && (
+                                  <p className="text-xs text-primary-600 font-medium mt-0.5">General Practitioner</p>
+                                )}
+                              </div>
+                              <span className="font-bold text-primary-600 text-xl">
+                                {activeConsultation.Payment?.amount
+                                  ? Number(activeConsultation.Payment.amount).toLocaleString()
+                                  : globalConsultationFee} Birr
+                              </span>
+                            </div>
+                            
+                            <button 
+                              onClick={handleChapaPayment}
+                              disabled={isSubmittingPayment} 
+                              className="w-full py-3 px-4 rounded-lg bg-[#00A859] text-white font-bold tracking-wide hover:bg-[#00904d] transition disabled:opacity-50 shadow-md flex items-center justify-center space-x-2"
+                            >
+                              <CreditCard size={20} />
+                              <span>{isSubmittingPayment ? 'Connecting to Chapa...' : 'Pay with Chapa'}</span>
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )
                 ) : (
                   <div className="max-w-md w-full text-center">
                     <div className="mx-auto bg-amber-100 text-amber-600 w-24 h-24 rounded-full flex items-center justify-center mb-6 shadow-sm">
@@ -1073,7 +1207,8 @@ const Consultations = () => {
                 )}
               </div>
             ) : (
-              <div className="flex-1 flex flex-col h-full bg-slate-50 relative overflow-hidden">
+              <div className="flex-1 flex bg-slate-50 relative overflow-hidden h-full">
+                <div className="flex-1 flex flex-col h-full relative overflow-hidden">
                 {/* Incoming Call Banner */}
                 {incomingCall && !isVideoActive && (
                   <div className="absolute top-0 left-0 w-full bg-emerald-600 text-white p-4 flex justify-between items-center shadow-md drop-shadow-lg z-50">
@@ -1182,21 +1317,34 @@ const Consultations = () => {
                       {/* Display Prescriptions if any */}
                       {user.role === 'patient' && prescriptions.length > 0 && (
                         <div className="mx-auto bg-white border border-slate-200 rounded-lg p-4 max-w-md shadow-sm text-sm mb-4 w-full">
-                          <h4 className="font-semibold text-slate-700 mb-2 border-b border-slate-100 pb-2">Prescribed Medication</h4>
+                          <h4 className="font-semibold text-slate-700 mb-2 border-b border-slate-100 pb-2">Prescription</h4>
                           <div className="space-y-3">
                             {prescriptions.map(p => (
-                              <div key={p.id} className="bg-purple-50 p-3 rounded border border-purple-100">
-                                <div className="flex justify-between items-start mb-1">
-                                  <span className="font-bold text-slate-800">{p.Drug?.name}</span>
-                                  <span className="text-[10px] text-slate-500">{new Date(p.created_at).toLocaleDateString()}</span>
+                              p.entry_type === 'counseling' ? (
+                                /* Counseling note entry */
+                                <div key={p.id} className="bg-teal-50 p-3 rounded border border-teal-100">
+                                  <div className="flex justify-between items-start mb-1">
+                                    <span className="text-[10px] uppercase font-bold text-teal-700 bg-teal-100 px-2 py-0.5 rounded-full">Psychological Counseling</span>
+                                    <span className="text-[10px] text-slate-500">{new Date(p.created_at).toLocaleDateString()}</span>
+                                  </div>
+                                  <p className="text-sm text-slate-700 mt-2 leading-relaxed">{p.counseling_note}</p>
+                                  <p className="text-xs text-slate-400 mt-2">— Dr. {p.Doctor?.name}</p>
                                 </div>
-                                <p className="text-xs text-slate-700 mb-1 font-medium">Dosage: <span className="font-normal">{p.Drug?.dosage}</span></p>
-                                <p className="text-xs text-slate-600 mb-2">{p.Drug?.description}</p>
-                                {p.instructions && <p className="text-xs text-slate-500 mb-2 italic">Note: "{p.instructions}"</p>}
-                                <div className="mt-2 pt-2 border-t border-purple-200 text-xs text-slate-500">
-                                  <span className="font-medium text-slate-600">Side effects:</span> {p.Drug?.side_effects}
+                              ) : (
+                                /* Medication entry */
+                                <div key={p.id} className="bg-purple-50 p-3 rounded border border-purple-100">
+                                  <div className="flex justify-between items-start mb-1">
+                                    <span className="font-bold text-slate-800">{p.Drug?.name}</span>
+                                    <span className="text-[10px] text-slate-500">{new Date(p.created_at).toLocaleDateString()}</span>
+                                  </div>
+                                  <p className="text-xs text-slate-700 mb-1 font-medium">Dosage: <span className="font-normal">{p.Drug?.dosage}</span></p>
+                                  <p className="text-xs text-slate-600 mb-2">{p.Drug?.description}</p>
+                                  {p.instructions && <p className="text-xs text-slate-500 mb-2 italic">Note: "{p.instructions}"</p>}
+                                  <div className="mt-2 pt-2 border-t border-purple-200 text-xs text-slate-500">
+                                    <span className="font-medium text-slate-600">Side effects:</span> {p.Drug?.side_effects}
+                                  </div>
                                 </div>
-                              </div>
+                              )
                             ))}
                           </div>
                         </div>
@@ -1397,6 +1545,79 @@ const Consultations = () => {
                     </div>
                   </>
                 )}
+                </div>
+
+                {/* Referral Context Sidebar (for Doctors only) */}
+                {user.role === 'doctor' && referralInfo && (
+                  <div className="w-80 border-l border-slate-200 bg-white flex flex-col h-full z-20 shrink-0">
+                    <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
+                      <Info size={18} className="text-indigo-600" />
+                      <h4 className="font-bold text-slate-800 text-sm">Referral Patient Context</h4>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                      {/* Summary */}
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Referral Priority</span>
+                        <div>
+                          <span className={`px-2 py-0.5 text-xs font-bold rounded-full capitalize
+                            ${referralInfo.referral?.urgency === 'emergency' ? 'bg-red-100 text-red-700' :
+                              referralInfo.referral?.urgency === 'urgent' ? 'bg-amber-100 text-amber-700' :
+                              'bg-emerald-100 text-emerald-700'}`}>
+                            {referralInfo.referral?.urgency || 'routine'} Urgency
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">GP Notes / Reasons</span>
+                        <p className="text-xs text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-100 italic">
+                          "{referralInfo.referral?.referral_note}"
+                        </p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Referred By</span>
+                        <p className="text-sm font-semibold text-slate-800">Dr. {referralInfo.referral?.GP?.name || 'Unknown GP'}</p>
+                        <p className="text-xs text-slate-500">General Practitioner</p>
+                      </div>
+
+                      {/* Lab/Radiology results from GP consultation */}
+                      <div className="space-y-2 pt-2 border-t border-slate-100">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Lab & Radiology Results</span>
+                        {referralInfo.serviceRequests && referralInfo.serviceRequests.length > 0 ? (
+                          <div className="space-y-2">
+                            {referralInfo.serviceRequests.map(req => (
+                              <div key={req.id} className="bg-slate-50 border border-slate-200 p-2.5 rounded text-xs">
+                                <div className="flex justify-between items-center font-bold text-slate-800 mb-1">
+                                  <span>{req.ServiceItem?.name}</span>
+                                  <span className={`text-[9px] uppercase px-1.5 py-0.5 rounded-full ${req.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                    {req.status}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 mt-1">Instructions: {req.instructions || 'None'}</p>
+                                {req.status === 'completed' && req.result_file_url && (
+                                  <div className="mt-2 pt-2 border-t border-slate-100 flex flex-col gap-1">
+                                    {req.result_notes && <p className="text-[10px] text-slate-600 italic">Notes: "{req.result_notes}"</p>}
+                                    <a
+                                      href={`${api.defaults.baseURL?.replace(/\/api$/, '') || 'http://localhost:5000'}${req.result_file_url}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="font-bold text-primary-600 hover:underline inline-flex items-center gap-1 mt-1 text-[11px]"
+                                    >
+                                      View Completed Report
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-400 italic">No lab or radiology requests ordered during GP consultation.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -1521,12 +1742,16 @@ const Consultations = () => {
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-fadeIn flex flex-col max-h-[90vh]">
             <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
-              <h3 className="font-bold text-lg text-slate-800 flex items-center"><PlusCircle className="mr-2 text-purple-600" size={20} /> Prescribe Medication</h3>
-              <button onClick={() => setShowPrescribeModal(false)} className="text-slate-500 hover:text-slate-800 font-bold text-xl">&times;</button>
+              <h3 className="font-bold text-lg text-slate-800 flex items-center"><PlusCircle className="mr-2 text-purple-600" size={20} /> Prescription &amp; Counseling</h3>
+              <button onClick={() => { setShowPrescribeModal(false); setCounselingNotes(['']); }} className="text-slate-500 hover:text-slate-800 font-bold text-xl">&times;</button>
             </div>
             <div className="p-6 overflow-y-auto flex-1 flex flex-col space-y-6">
-              {/* Search Section */}
+
+              {/* ── Medication Section ── */}
               <div>
+                <h4 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                  <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wide">Medications</span>
+                </h4>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Search Drug Database</label>
                 <div className="relative">
                   <input
@@ -1551,38 +1776,82 @@ const Consultations = () => {
                     ))}
                   </div>
                 )}
+
+                <div className="mt-4">
+                  {selectedDrugs.length === 0 ? (
+                    <div className="text-center p-5 border-2 border-dashed border-slate-200 rounded-lg text-slate-400 text-sm">
+                      No medications selected yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {selectedDrugs.map(drug => (
+                        <div key={drug.id} className="bg-purple-50 p-4 rounded-lg border border-purple-100 flex flex-col relative">
+                          <button onClick={() => handleRemoveDrug(drug.id)} className="absolute top-2 right-2 text-rose-500 hover:bg-rose-100 p-1 rounded transition"><X size={16} /></button>
+                          <h5 className="font-bold text-slate-800 mb-1 pr-6">{drug.name} <span className="font-normal text-slate-600 text-sm ml-2">({drug.dosage})</span></h5>
+                          <p className="text-xs text-slate-600 mb-3 line-clamp-2">{drug.description}</p>
+                          <textarea
+                            rows="2"
+                            className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500 resize-none"
+                            placeholder="Optional: Custom instructions for the patient..."
+                            value={drug.instructions}
+                            onChange={e => handleUpdateDrugInstructions(drug.id, e.target.value)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Selected Drugs */}
+              {/* ── Psychological Counseling Notes Section ── */}
               <div>
-                <h4 className="font-medium text-slate-700 mb-3 border-b border-slate-200 pb-2">Selected Medications</h4>
-                {selectedDrugs.length === 0 ? (
-                  <div className="text-center p-6 border-2 border-dashed border-slate-200 rounded-lg text-slate-400">
-                    <p>No medications selected.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {selectedDrugs.map(drug => (
-                      <div key={drug.id} className="bg-purple-50 p-4 rounded-lg border border-purple-100 flex flex-col relative">
-                        <button onClick={() => handleRemoveDrug(drug.id)} className="absolute top-2 right-2 text-rose-500 hover:bg-rose-100 p-1 rounded transition"><X size={16} /></button>
-                        <h5 className="font-bold text-slate-800 mb-1 pr-6">{drug.name} <span className="font-normal text-slate-600 text-sm ml-2">({drug.dosage})</span></h5>
-                        <p className="text-xs text-slate-600 mb-3 line-clamp-2">{drug.description}</p>
-                        <textarea
-                          rows="2"
-                          className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500 resize-none"
-                          placeholder="Optional: Custom instructions for the patient..."
-                          value={drug.instructions}
-                          onChange={e => handleUpdateDrugInstructions(drug.id, e.target.value)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <h4 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                  <span className="bg-teal-100 text-teal-700 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wide">Psychological Counseling Notes</span>
+                  <span className="text-xs text-slate-400 font-normal">Optional — for mental health guidance, therapy recommendations, or behavioral advice</span>
+                </h4>
+                <div className="space-y-3">
+                  {counselingNotes.map((note, idx) => (
+                    <div key={idx} className="relative">
+                      <textarea
+                        rows="3"
+                        className="w-full px-3 py-2 text-sm border border-teal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 bg-teal-50 resize-none"
+                        placeholder={`e.g. Recommend weekly CBT sessions, practice mindfulness exercises daily, avoid stressful environments...`}
+                        value={note}
+                        onChange={e => {
+                          const updated = [...counselingNotes];
+                          updated[idx] = e.target.value;
+                          setCounselingNotes(updated);
+                        }}
+                      />
+                      {counselingNotes.length > 1 && (
+                        <button
+                          onClick={() => setCounselingNotes(counselingNotes.filter((_, i) => i !== idx))}
+                          className="absolute top-2 right-2 text-rose-400 hover:bg-rose-100 p-1 rounded transition"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setCounselingNotes([...counselingNotes, ''])}
+                    className="text-xs text-teal-600 hover:text-teal-800 font-semibold flex items-center gap-1 transition"
+                  >
+                    <PlusCircle size={14} /> Add another counseling note
+                  </button>
+                </div>
               </div>
+
             </div>
             <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end space-x-3 shrink-0">
-              <button type="button" onClick={() => setShowPrescribeModal(false)} className="px-5 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 transition font-medium">Cancel</button>
-              <button type="button" onClick={handlePrescribeSubmit} disabled={selectedDrugs.length === 0 || isPrescribing} className="px-5 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-bold shadow-sm disabled:opacity-50">
+              <button type="button" onClick={() => { setShowPrescribeModal(false); setCounselingNotes(['']); }} className="px-5 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-100 transition font-medium">Cancel</button>
+              <button
+                type="button"
+                onClick={handlePrescribeSubmit}
+                disabled={(selectedDrugs.length === 0 && counselingNotes.every(n => !n.trim())) || isPrescribing}
+                className="px-5 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-bold shadow-sm disabled:opacity-50"
+              >
                 {isPrescribing ? 'Prescribing...' : 'Confirm Prescription'}
               </button>
             </div>

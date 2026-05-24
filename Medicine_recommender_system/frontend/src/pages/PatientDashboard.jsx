@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { AuthContext } from '../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
+import io from 'socket.io-client';
 import {
   PlusCircle,
   MessageSquare,
@@ -12,6 +13,11 @@ import {
   Star
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import LanguageSwitcher from '../components/common/LanguageSwitcher';
+
+const SOCKET_URL = import.meta.env.VITE_API_URL
+  ? import.meta.env.VITE_API_URL.replace('/api', '')
+  : 'http://localhost:5000';
 
 const PatientDashboard = () => {
   const { t } = useTranslation();
@@ -58,6 +64,7 @@ const PatientDashboard = () => {
           <p className="text-slate-500 mt-1 text-sm md:text-base">{t('patientDashboard.overview')}</p>
         </div>
         <div className="flex items-center space-x-4">
+          <LanguageSwitcher />
           <button className="p-2 text-slate-400 hover:text-primary-600 bg-white rounded-full border border-slate-200 shadow-sm relative transition-colors">
             <Bell size={20} />
             <span className="absolute top-0 right-0 h-2.5 w-2.5 bg-red-500 rounded-full border-2 border-white"></span>
@@ -301,6 +308,7 @@ const PendingFeedback = () => {
 
 // ─── Service Queue Component ───────────────────────────────────────────────────
 const PatientServiceQueue = () => {
+  const { user } = useContext(AuthContext);
   const [serviceReqs, setServiceReqs] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -339,6 +347,19 @@ const PatientServiceQueue = () => {
     const interval = setInterval(fetchQueue, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Listen for real-time queue updates from the specialist's actions
+  useEffect(() => {
+    if (!user?.id) return;
+    const socket = io(SOCKET_URL);
+    socket.emit('join_user_room', user.id);
+    socket.on('queue_updated', () => {
+      fetchQueue();
+    });
+    return () => {
+      socket.disconnect();
+    };
+  }, [user?.id]);
 
   const handlePay = async (id) => {
     try {
@@ -387,7 +408,6 @@ const PatientServiceQueue = () => {
                 <div className="bg-white border flex flex-col items-center justify-center border-emerald-200 rounded-lg p-3 text-center mb-3 min-w-[140px] shadow-sm">
                   <span className="text-sm text-slate-500 font-medium">Your Queue Position</span>
                   <span className="text-3xl font-bold text-emerald-600">#{test.queue_position}</span>
-                  <span className="text-xs text-slate-500 mt-1 font-medium">Wait time: ~{test.estimated_wait_time_mins} mins</span>
                 </div>
               ) : test.payment_status !== 'paid' && test.status !== 'completed' ? (
                 <div className="bg-rose-50 border flex flex-col items-center justify-center border-rose-200 rounded-lg p-3 text-center mb-3 min-w-[140px]">

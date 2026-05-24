@@ -2,11 +2,13 @@ import React, { useState, useContext } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
 import { KeyRound } from 'lucide-react';
+import { resetPasswordSchema, formatZodErrors } from '../utils/validationSchemas';
 
 const ResetPassword = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const { resetPassword } = useContext(AuthContext);
@@ -17,14 +19,11 @@ const ResetPassword = () => {
     e.preventDefault();
     setError('');
     setMessage('');
+    setFieldErrors({});
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters long.');
-      return;
-    }
-    
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.');
+    const result = resetPasswordSchema.safeParse({ newPassword: password, confirmPassword });
+    if (!result.success) {
+      setFieldErrors(formatZodErrors(result.error));
       return;
     }
 
@@ -63,23 +62,23 @@ const ResetPassword = () => {
             <label className="block text-sm font-medium text-slate-700 mb-1">New Password</label>
             <input 
               type="password" 
-              className="w-full border-slate-300 border rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" 
+              className={`w-full border rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition ${fieldErrors.newPassword ? 'border-red-500' : 'border-slate-300'}`} 
               value={password} 
               onChange={(e) => setPassword(e.target.value)} 
               placeholder="••••••••"
-              required 
             />
+            {fieldErrors.newPassword && <p className="text-red-500 text-xs mt-1">{fieldErrors.newPassword}</p>}
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Confirm New Password</label>
             <input 
               type="password" 
-              className="w-full border-slate-300 border rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" 
+              className={`w-full border rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition ${fieldErrors.confirmPassword ? 'border-red-500' : 'border-slate-300'}`} 
               value={confirmPassword} 
               onChange={(e) => setConfirmPassword(e.target.value)} 
               placeholder="••••••••"
-              required 
             />
+            {fieldErrors.confirmPassword && <p className="text-red-500 text-xs mt-1">{fieldErrors.confirmPassword}</p>}
           </div>
           <button 
             type="submit" 

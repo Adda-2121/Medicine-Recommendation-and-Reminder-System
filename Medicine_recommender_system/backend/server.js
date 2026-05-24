@@ -49,6 +49,13 @@ io.on('connection', (socket) => {
         return;
       }
 
+      // Guard: block messaging on closed/completed cases
+      const consultationCheck = await Consultation.findByPk(data.consultation_id, { attributes: ['status'] });
+      if (consultationCheck && consultationCheck.status === 'completed') {
+        socket.emit('error_message', { message: 'This case is closed. No further messages can be sent.' });
+        return;
+      }
+
       // data expects: { consultation_id, sender_id, message, attachment_url, chat_type }
       const savedMessage = await ChatMessage.create({
         consultation_id: data.consultation_id,
@@ -161,6 +168,28 @@ sequelize.authenticate()
       await sequelize.query(`CREATE TYPE "enum_ChatMessages_chat_type" AS ENUM ('patient', 'laboratorist');`).catch(() => {});
       await sequelize.query(`ALTER TYPE "enum_ChatMessages_chat_type" ADD VALUE IF NOT EXISTS 'radiologist';`).catch(() => {});
       console.log('Ensure chat_type enum exists in ChatMessages');
+
+      // ── Consultation status: add new lifecycle values ──────────────────────
+      await sequelize.query(`ALTER TYPE "enum_Consultations_status" ADD VALUE IF NOT EXISTS 'prescription_submitted';`).catch(() => {});
+      await sequelize.query(`ALTER TYPE "enum_Consultations_status" ADD VALUE IF NOT EXISTS 'closing_soon';`).catch(() => {});
+      console.log('Ensure prescription_submitted and closing_soon exist in Consultations status ENUM');
+
+      // ── Prescriptions table: add new columns if they don't exist ──────────
+      // Make drug_id nullable (for counseling-only entries)
+      await sequelize.query(`ALTER TABLE "Prescriptions" ALTER COLUMN "drug_id" DROP NOT NULL;`).catch(() => {});
+      // Add counseling_note column
+      await sequelize.query(`ALTER TABLE "Prescriptions" ADD COLUMN IF NOT EXISTS "counseling_note" TEXT;`).catch(() => {});
+      // Add entry_type ENUM column
+      await sequelize.query(`DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_Prescriptions_entry_type') THEN
+          CREATE TYPE "enum_Prescriptions_entry_type" AS ENUM ('medication', 'counseling');
+        END IF;
+      END $$;`).catch(() => {});
+      await sequelize.query(`ALTER TABLE "Prescriptions" ADD COLUMN IF NOT EXISTS "entry_type" "enum_Prescriptions_entry_type" NOT NULL DEFAULT 'medication';`).catch(() => {});
+      // Add prescription_submitted_at and closing_at to Consultations
+      await sequelize.query(`ALTER TABLE "Consultations" ADD COLUMN IF NOT EXISTS "prescription_submitted_at" TIMESTAMP WITH TIME ZONE;`).catch(() => {});
+      await sequelize.query(`ALTER TABLE "Consultations" ADD COLUMN IF NOT EXISTS "closing_at" TIMESTAMP WITH TIME ZONE;`).catch(() => {});
+      console.log('Prescriptions and Consultations schema migrations applied');
     } catch (err) {
       // Ignore if type doesn't exist yet (first run) or other error
       console.error('Enum alteration error:', err.message);

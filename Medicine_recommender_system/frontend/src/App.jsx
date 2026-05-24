@@ -62,8 +62,8 @@ const AppContent = () => {
   return (
     <Routes>
       {/* ... keeping public and admin dashboards the same ... */}
-      {/* Public Landing Pages */}
-      <Route element={user ? <Navigate to={`/${user.role === 'company_admin' ? 'admin' : user.role}`} replace /> : <PublicLayout />}>
+      {/* Public Landing Pages — accessible to everyone including logged-in users */}
+      <Route element={<PublicLayout />}>
         <Route path="/" element={<Landing />} />
         <Route path="/features" element={<Features />} />
         <Route path="/about" element={<About />} />

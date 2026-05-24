@@ -5,7 +5,7 @@ import { AuthContext } from '../contexts/AuthContext';
 import api from '../services/api';
 import {
   History as HistoryIcon, Search, Filter, FileText, ChevronRight, Star, MessageSquare,
-  Pill, ClipboardList, Stethoscope, ChevronDown, CheckCircle, AlertCircle
+  Pill, ClipboardList, Stethoscope, ChevronDown, CheckCircle, AlertCircle, Trash2, MoreHorizontal
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -541,6 +541,12 @@ const History = () => {
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Clear history state (patient only)
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false);
+  const [clearInput, setClearInput] = useState('');
+  const [isClearing, setIsClearing] = useState(false);
+
   //  Fetch consultations + testimonials on mount 
   useEffect(() => {
     const fetchConsultations = async () => {
@@ -611,6 +617,22 @@ const History = () => {
     }
   };
 
+  //  Clear history handler (patient only) 
+  const handleClearHistory = async () => {
+    setIsClearing(true);
+    try {
+      const res = await api.delete('/consultations/history');
+      toast.success(res.data.message || 'History cleared.');
+      setConsultations(prev => prev.filter(c => c.status !== 'completed'));
+      setClearConfirm(false);
+      setClearInput('');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to clear history.');
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   //  Tab definitions 
   const patientTabs = [
     { id: 'consultations', label: t('history.tabs.consultations'), count: consultations.length },
@@ -667,6 +689,47 @@ const History = () => {
             </select>
             <Filter className="absolute left-3 top-2.5 text-slate-400" size={18} />
           </div>
+
+          {/* 3-dot menu — patients only */}
+          {!isDoctor && (
+            <div className="relative flex-shrink-0">
+              <button
+                onClick={() => setMenuOpen(o => !o)}
+                className="w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition shadow-sm"
+                title="More options"
+              >
+                <MoreHorizontal size={18} />
+              </button>
+
+              {menuOpen && (
+                <>
+                  {/* backdrop to close on outside click */}
+                  <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                  <div className="absolute right-0 mt-1.5 w-52 bg-white rounded-xl shadow-lg border border-slate-200 z-20 overflow-hidden">
+                    <div className="px-3 py-2 border-b border-slate-100">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">History options</p>
+                    </div>
+                    <div className="p-1">
+                      {consultations.some(c => c.status === 'completed') ? (
+                        <button
+                          onClick={() => { setMenuOpen(false); setClearConfirm(true); setClearInput(''); }}
+                          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 transition font-medium"
+                        >
+                          <Trash2 size={15} className="shrink-0" />
+                          Clear history
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-400 cursor-not-allowed">
+                          <Trash2 size={15} className="shrink-0" />
+                          No history to clear
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -761,6 +824,99 @@ const History = () => {
         onClose={() => setFeedbackModal({ isOpen: false, serviceId: null, type: null, doctorName: '' })}
         onSubmit={submitFeedback}
       />
+
+      {/* Clear History Confirmation Modal */}
+      {clearConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+
+            {/* Header */}
+            <div className="px-6 pt-6 pb-5 border-b border-slate-100">
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                  <Trash2 size={18} className="text-red-600" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">Clear consultation history</h2>
+                  <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                    This will permanently delete all <span className="font-semibold text-slate-700">completed</span> consultations from your history. Active and pending consultations are not affected.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Warning box */}
+            <div className="mx-6 mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-2.5">
+              <AlertCircle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 leading-relaxed">
+                <span className="font-semibold">This action is irreversible.</span> Once deleted, your consultation records, associated notes, and linked data cannot be recovered.
+              </p>
+            </div>
+
+            {/* What will be deleted summary */}
+            <div className="mx-6 mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">What will be deleted</p>
+              <ul className="space-y-1.5">
+                {[
+                  `${consultations.filter(c => c.status === 'completed').length} completed consultation${consultations.filter(c => c.status === 'completed').length !== 1 ? 's' : ''}`,
+                  'Associated symptoms & notes',
+                  'Linked payment records',
+                ].map(item => (
+                  <li key={item} className="flex items-center gap-2 text-xs text-slate-600">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Type-to-confirm */}
+            <div className="px-6 mt-5">
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                Type <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-800">clear history</span> to confirm
+              </label>
+              <input
+                type="text"
+                autoFocus
+                value={clearInput}
+                onChange={e => setClearInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && clearInput === 'clear history' && !isClearing && handleClearHistory()}
+                placeholder="clear history"
+                className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-red-400 font-mono placeholder:text-slate-300 transition"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="px-6 py-5 mt-2 flex gap-3">
+              <button
+                type="button"
+                onClick={() => { setClearConfirm(false); setClearInput(''); }}
+                className="flex-1 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm font-semibold transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleClearHistory}
+                disabled={clearInput !== 'clear history' || isClearing}
+                className="flex-1 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-bold transition flex items-center justify-center gap-2"
+              >
+                {isClearing ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    Clearing…
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={14} />
+                    Clear History
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

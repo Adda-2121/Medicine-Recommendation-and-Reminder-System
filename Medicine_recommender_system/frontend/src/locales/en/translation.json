@@ -55,7 +55,7 @@
   },
   "sidebar": {
     "dashboard": "Dashboard",
-    "consultations": "Consultations / Chat",
+    "consultations": "Active Chats",
     "findDoctor": "Find Doctor",
     "reminders": "Reminders",
     "history": "History",
@@ -181,7 +181,7 @@
       "title": "Create Account",
       "subtitle": "Join HealthConnect today",
       "nameLabel": "Full Name",
-      "namePlaceholder": "John Doe",
+      "namePlaceholder": "Addisu Gebeyehu",
       "ageLabel": "Age",
       "sexLabel": "Sex",
       "male": "Male",
@@ -667,5 +667,69 @@
     "good": "Good",
     "veryGood": "Very Good",
     "excellent": "Excellent"
+  },
+  "healthInfo": {
+    "sectionTitle": "Health Information & Insights",
+    "sectionSubtitle": "Stay updated with the latest medical advice, wellness tips, and clinic news directly from our healthcare professionals.",
+    "readArticle": "Read Article",
+    "viewAllPosts": "View All Posts ({{count}}) →",
+    "showLess": "Show Less ↑",
+    "closeBtn": "Close",
+    "articles": {
+      "1": {
+        "category": "Clinical Care",
+        "title": "The Benefits of Regular Clinical Checkups",
+        "excerpt": "Routine clinic visits can help catch potential issues early before they become severe. Learn how often you should visit your primary care physician.",
+        "content": "Regular clinical checkups are one of the most powerful tools for maintaining long-term health. Many serious conditions — including hypertension, diabetes, and certain cancers — develop silently without obvious symptoms. A routine visit gives your doctor the opportunity to detect these issues early, when treatment is most effective.\n\n**How often should you go?**\nFor healthy adults, an annual checkup is generally recommended. If you have existing conditions or a family history of certain diseases, your doctor may suggest more frequent visits.\n\n**What happens during a checkup?**\nA standard checkup typically includes blood pressure measurement, blood tests (cholesterol, blood sugar, CBC), weight and BMI assessment, and a review of your medications and lifestyle habits. Your doctor will also update vaccinations and screen for age-appropriate conditions.\n\n**The mental health benefit**\nBeyond physical health, regular visits build a relationship with your doctor. This trust makes it easier to discuss sensitive topics like mental health, sexual health, or substance use — areas that are often neglected until they become crises.\n\n**Key takeaway:** Don't wait until you feel sick. Preventive care is always less costly — financially and physically — than treating advanced disease."
+      },
+      "2": {
+        "category": "Chronic Disease",
+        "title": "Managing Chronic Conditions Effectively",
+        "excerpt": "Living with diabetes or hypertension? Discover actionable strategies to maintain a healthy lifestyle and keep your markers in check.",
+        "content": "Chronic conditions like type 2 diabetes, hypertension, and asthma affect millions of people worldwide. While they cannot always be cured, they can be managed effectively with the right combination of medical care, lifestyle changes, and self-monitoring.\n\n**Medication adherence**\nTaking your medications consistently — even when you feel fine — is the foundation of chronic disease management. Skipping doses can lead to dangerous spikes or drops in blood pressure, blood sugar, or other markers.\n\n**Diet and exercise**\nFor diabetics, a low-glycemic diet rich in vegetables, lean proteins, and whole grains helps stabilize blood sugar. For hypertension, reducing sodium intake and increasing potassium-rich foods (bananas, leafy greens) can lower blood pressure naturally. Aim for at least 150 minutes of moderate exercise per week.\n\n**Self-monitoring**\nHome blood pressure monitors and glucometers allow you to track your numbers between doctor visits. Keep a log and share it with your healthcare provider — patterns in your data can guide treatment adjustments.\n\n**Stress management**\nChronic stress worsens nearly every chronic condition. Techniques like deep breathing, yoga, and adequate sleep are not optional extras — they are part of your treatment plan.\n\n**Key takeaway:** Chronic disease management is a daily practice. Small, consistent actions compound into dramatically better health outcomes over time."
+      },
+      "3": {
+        "category": "Pediatrics",
+        "title": "Pediatric Care for Your Growing Child",
+        "excerpt": "From crucial vaccinations to developmental milestones, ensure your child gets the best start in life with expert pediatric advice.",
+        "content": "The first years of a child's life are the most critical for physical and cognitive development. Regular pediatric care ensures your child grows up healthy, protected from preventable diseases, and on track developmentally.\n\n**Vaccination schedule**\nVaccines protect children from serious diseases like measles, polio, hepatitis B, and whooping cough. Following the recommended immunization schedule is one of the most important things a parent can do. Vaccines are safe, rigorously tested, and save millions of lives each year.\n\n**Developmental milestones**\nPediatricians monitor milestones at every visit — from a baby's first smile to a toddler's first words. Early identification of developmental delays allows for timely intervention, which dramatically improves outcomes for conditions like autism spectrum disorder or speech delays.\n\n**Nutrition in early childhood**\nBreastfeeding is recommended for the first 6 months. As solid foods are introduced, focus on variety — fruits, vegetables, proteins, and whole grains. Limit sugar and processed foods from the start to establish healthy eating habits.\n\n**Screen time and sleep**\nThe American Academy of Pediatrics recommends no screen time for children under 18 months (except video calls) and limited, high-quality content for older toddlers. Adequate sleep — 12–16 hours for infants, 10–13 hours for toddlers — is essential for brain development.\n\n**Key takeaway:** Consistent pediatric visits are not just about illness. They are your child's roadmap to a healthy, thriving life."
+      },
+      "4": {
+        "category": "Nutrition",
+        "title": "Nutrition Tips for a Healthy Heart",
+        "excerpt": "Diet plays a pivotal role in cardiovascular health. Explore heart-healthy foods that you can easily incorporate into your daily meals.",
+        "content": "Cardiovascular disease is the leading cause of death globally, yet up to 80% of cases are preventable through lifestyle changes — with diet being the most powerful lever.\n\n**The Mediterranean approach**\nResearch consistently shows that a Mediterranean-style diet — rich in olive oil, fish, nuts, legumes, fruits, and vegetables — significantly reduces the risk of heart attack and stroke. It's not a strict diet but a flexible eating pattern.\n\n**Foods to embrace**\nFatty fish (salmon, sardines, mackerel) are rich in omega-3 fatty acids that reduce inflammation and triglycerides. Leafy greens (spinach, kale) are high in nitrates that help lower blood pressure. Berries are packed with antioxidants that protect blood vessels. Nuts and seeds provide healthy fats, fiber, and plant sterols that lower LDL cholesterol. Whole grains like oats, quinoa, and brown rice reduce cholesterol and stabilize blood sugar.\n\n**Foods to limit**\nSaturated fats (red meat, full-fat dairy), trans fats (processed snacks), excess sodium, and added sugars all contribute to arterial damage and inflammation.\n\n**The role of hydration**\nStaying well-hydrated keeps blood viscosity optimal. Water is always the best choice — sugary drinks and excessive alcohol are significant cardiovascular risk factors.\n\n**Key takeaway:** Every meal is an opportunity to either protect or harm your heart. Small, consistent dietary improvements add up to a dramatically lower risk of heart disease."
+      },
+      "5": {
+        "category": "Diagnostics",
+        "title": "Understanding Your Annual Lab Results",
+        "excerpt": "What do your blood test numbers actually mean? A simple guide to demystifying your cholesterol, blood sugar, and CBC panels.",
+        "content": "Receiving a lab report filled with numbers and abbreviations can be overwhelming. Here's a plain-language guide to the most common tests and what they mean for your health.\n\n**Complete Blood Count (CBC)**\nHemoglobin and hematocrit measure red blood cell levels — low values indicate anemia, high values may suggest dehydration. White blood cell (WBC) counts that are high can indicate infection or inflammation; very low counts may signal immune problems. Platelets are essential for clotting, and abnormal levels can indicate bleeding disorders.\n\n**Lipid Panel (Cholesterol)**\nLDL (\"bad\" cholesterol) should be below 100 mg/dL for most people — high LDL builds up in arteries. HDL (\"good\" cholesterol) should be above 60 mg/dL, as it removes cholesterol from arteries. Triglycerides should be below 150 mg/dL; high levels are linked to heart disease and diabetes.\n\n**Blood Sugar**\nFasting glucose: normal is 70–99 mg/dL. A reading of 100–125 indicates prediabetes; 126+ indicates diabetes. HbA1c reflects average blood sugar over 3 months — below 5.7% is normal, 5.7–6.4% is prediabetes.\n\n**Kidney and Liver Function**\nCreatinine and BUN measure kidney health. ALT and AST measure liver health. Elevated values warrant follow-up with your doctor.\n\n**Key takeaway:** Lab results are a snapshot, not a verdict. Always discuss your results with your doctor in the context of your full health picture."
+      },
+      "6": {
+        "category": "Wellness",
+        "title": "Mental Health: Reducing Stress in Daily Life",
+        "excerpt": "Stress affects both your mind and your body. Implement these daily mindfulness and relaxation strategies for holistic wellness.",
+        "content": "Stress is a normal part of life, but chronic stress takes a serious toll on both mental and physical health — contributing to anxiety, depression, heart disease, digestive problems, and weakened immunity. The good news is that evidence-based strategies can significantly reduce its impact.\n\n**Understanding the stress response**\nWhen you perceive a threat, your body releases cortisol and adrenaline — the \"fight or flight\" hormones. This is helpful in short bursts but damaging when chronically activated. Learning to regulate this response is the core of stress management.\n\n**Mindfulness and meditation**\nEven 10 minutes of daily mindfulness meditation has been shown to reduce cortisol levels, improve focus, and decrease symptoms of anxiety and depression. Simply focusing on your breath for a few minutes can be a starting point.\n\n**Physical activity**\nExercise is one of the most powerful stress relievers available. It releases endorphins, improves sleep, and provides a healthy outlet for tension. A 30-minute walk, yoga session, or any movement you enjoy can shift your mood within minutes.\n\n**Sleep hygiene**\nStress and poor sleep create a vicious cycle. Prioritize 7–9 hours of sleep by maintaining a consistent schedule, avoiding screens before bed, and keeping your bedroom cool and dark.\n\n**Social connection**\nIsolation amplifies stress. Regular connection with friends, family, or a support group provides emotional regulation and perspective. Don't underestimate the healing power of simply talking to someone you trust.\n\n**Key takeaway:** Stress management is not a luxury — it is essential healthcare. Build small daily practices and seek professional help when needed."
+      },
+      "7": {
+        "category": "Fitness",
+        "title": "Exercise as Medicine: Moving for Better Health",
+        "excerpt": "Physical activity is one of the most effective interventions for preventing and treating dozens of chronic diseases. Here's how to start.",
+        "content": "The evidence is overwhelming: regular physical activity reduces the risk of heart disease, type 2 diabetes, certain cancers, depression, and cognitive decline. Yet most people don't move enough. Here's how to change that.\n\n**How much exercise do you need?**\nThe World Health Organization recommends at least 150–300 minutes of moderate-intensity aerobic activity per week (like brisk walking or cycling), plus muscle-strengthening activities on 2 or more days per week.\n\n**Starting from zero**\nIf you're currently sedentary, start small. A 10-minute walk after meals is a proven strategy for blood sugar control. Gradually increase duration and intensity over weeks. Consistency matters far more than intensity when starting out.\n\n**Types of exercise and their benefits**\nAerobic exercise (walking, running, swimming) strengthens the heart, improves lung capacity, and burns calories. Strength training (weights, resistance bands) builds muscle mass, improves bone density, and boosts metabolism. Flexibility and balance work (yoga, stretching) reduces injury risk, improves posture, and supports joint health.\n\n**Exercise and mental health**\nA single session of moderate exercise can reduce anxiety and improve mood for hours. Regular exercise is as effective as antidepressants for mild to moderate depression in multiple clinical trials.\n\n**Key takeaway:** You don't need a gym membership or hours of free time. Start with what you have, where you are, and build from there."
+      },
+      "8": {
+        "category": "Sleep",
+        "title": "The Science of Sleep: Why Rest Is Non-Negotiable",
+        "excerpt": "Sleep is not downtime — it's when your body repairs, consolidates memory, and regulates hormones. Learn what happens when you don't get enough.",
+        "content": "Sleep is one of the most undervalued pillars of health. During sleep, your brain consolidates memories, your body repairs tissues, your immune system strengthens, and hormones that regulate hunger and stress are balanced. Chronic sleep deprivation is linked to obesity, diabetes, heart disease, and mental illness.\n\n**How much sleep do you need?**\nMost adults need 7–9 hours per night. Teenagers need 8–10 hours. Children need even more. Consistently sleeping less than 6 hours is associated with significantly increased health risks.\n\n**The stages of sleep**\nSleep cycles through light sleep, deep sleep (slow-wave), and REM (rapid eye movement) sleep. Deep sleep is when physical repair happens; REM sleep is critical for emotional processing and memory consolidation. Both are essential.\n\n**Common sleep disruptors**\nBlue light from screens suppresses melatonin production — avoid screens 1 hour before bed. Caffeine has a half-life of 5–6 hours, so afternoon coffee can still affect sleep at midnight. Irregular schedules disrupt your circadian rhythm; try to sleep and wake at the same time every day. Stress and anxiety are a leading cause of insomnia — journaling or a brief relaxation routine before bed can help.\n\n**When to seek help**\nIf you regularly struggle to fall or stay asleep, or feel unrefreshed despite adequate time in bed, speak with a doctor. Sleep apnea, restless leg syndrome, and insomnia disorder are all treatable conditions.\n\n**Key takeaway:** Prioritizing sleep is not laziness — it is one of the highest-return investments you can make in your health."
+      },
+      "9": {
+        "category": "Preventive Care",
+        "title": "Vaccinations for Adults: What You Might Be Missing",
+        "excerpt": "Vaccines aren't just for children. Many adults are missing critical immunizations that protect against serious, preventable diseases.",
+        "content": "Most people associate vaccines with childhood, but adult immunization is equally important. Immunity from childhood vaccines can wane over time, and new vaccines have been developed for diseases that primarily affect adults.\n\n**Vaccines every adult should consider**\nThe annual influenza (flu) vaccine is recommended for all adults — flu can be life-threatening, especially for those over 65 or with chronic conditions. A Tdap booster (tetanus, diphtheria, pertussis) is needed every 10 years. Stay up to date with COVID-19 recommendations based on your age and health status. The pneumococcal vaccine is recommended for adults 65+ and younger adults with certain health conditions. The shingles (Zoster) vaccine is recommended for adults 50+ as shingles can cause severe, long-lasting nerve pain. If not vaccinated as a child, the hepatitis B series protects against a serious liver infection.\n\n**Travel vaccines**\nIf you travel internationally, additional vaccines may be needed depending on your destination — including typhoid, yellow fever, hepatitis A, and meningococcal vaccines.\n\n**Checking your status**\nAsk your doctor to review your vaccination history at your next checkup. Many adults are surprised to discover gaps in their protection.\n\n**Key takeaway:** Vaccines are one of the safest, most cost-effective public health tools available. Staying up to date protects you and the people around you."
+      }
+    }
   }
 }

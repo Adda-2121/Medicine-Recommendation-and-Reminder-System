@@ -1,11 +1,22 @@
-import React from 'react';
+﻿import React, { useContext } from 'react';
 import { Link, Outlet } from 'react-router-dom';
-import { Activity } from 'lucide-react';
+import { Activity, LayoutDashboard } from 'lucide-react';
 import LanguageSwitcher from '../components/common/LanguageSwitcher';
 import { useTranslation } from 'react-i18next';
+import { AuthContext } from '../contexts/AuthContext';
 
 export const PublicLayout = () => {
   const { t } = useTranslation();
+  const { user } = useContext(AuthContext);
+
+  const dashboardPath = user
+    ? user.role === 'company_admin' ? '/admin'
+    : user.role === 'doctor' ? '/doctor'
+    : user.role === 'laboratorist' ? '/laboratorist'
+    : user.role === 'radiologist' ? '/radiologist'
+    : '/patient'
+    : null;
+
   return (
   <div className="min-h-screen bg-slate-50 flex flex-col font-sans overflow-x-hidden">
     <header className="bg-white/95 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50">
@@ -22,8 +33,20 @@ export const PublicLayout = () => {
         </nav>
         <div className="flex items-center space-x-4">
           <LanguageSwitcher />
-          <Link to="/login" className="text-slate-600 hover:text-primary-600 font-medium transition">{t('publicLayout.login')}</Link>
-          <Link to="/register" className="bg-primary-600 text-white px-4 py-2 text-sm font-medium rounded-md hover:bg-primary-700 shadow-sm transition">{t('publicLayout.register')}</Link>
+          {user ? (
+            <Link
+              to={dashboardPath}
+              className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2 text-sm font-medium rounded-md hover:bg-primary-700 shadow-sm transition"
+            >
+              <LayoutDashboard size={16} />
+              Back to Dashboard
+            </Link>
+          ) : (
+            <>
+              <Link to="/login" className="text-slate-600 hover:text-primary-600 font-medium transition">{t('publicLayout.login')}</Link>
+              <Link to="/register" className="bg-primary-600 text-white px-4 py-2 text-sm font-medium rounded-md hover:bg-primary-700 shadow-sm transition">{t('publicLayout.register')}</Link>
+            </>
+          )}
         </div>
       </div>
     </header>
@@ -74,16 +97,21 @@ export const Landing = () => {
           <div className="mt-12 flex items-center justify-center lg:justify-start gap-6 text-slate-500">
             <div className="flex -space-x-3">
               {[
-                "https://images.unsplash.com/photo-1531123414708-f1f3e792e8a1?q=80&w=100&auto=format&fit=crop",
-                "https://images.unsplash.com/photo-1506869502758-1c46955a1334?q=80&w=100&auto=format&fit=crop",
-                "https://images.unsplash.com/photo-1489424731084-a5d8b219a5bb?q=80&w=100&auto=format&fit=crop",
-                "https://images.unsplash.com/photo-1544716270-3694f4797be9?q=80&w=100&auto=format&fit=crop"
-              ].map((imgUrl, i) => (
-                <div key={i} className="w-10 h-10 rounded-full border-2 border-slate-50 bg-slate-200 flex items-center justify-center overflow-hidden">
-                  <img src={imgUrl} alt="User" className="w-full h-full object-cover" />
+                { url: "https://images.unsplash.com/photo-1531123414708-f1f3e792e8a1?q=80&w=80&h=80&auto=format&fit=crop&crop=face", initial: "A" },
+                { url: "https://images.unsplash.com/photo-1506869502758-1c46955a1334?q=80&w=80&h=80&auto=format&fit=crop&crop=face", initial: "B" },
+                { url: "https://images.unsplash.com/photo-1489424731084-a5d8b219a5bb?q=80&w=80&h=80&auto=format&fit=crop&crop=face", initial: "C" },
+                { url: "https://images.unsplash.com/photo-1544716270-3694f4797be9?q=80&w=80&h=80&auto=format&fit=crop&crop=face", initial: "D" },
+              ].map((avatar, i) => (
+                <div key={i} className="w-10 h-10 rounded-full border-2 border-slate-50 bg-primary-100 text-primary-700 flex items-center justify-center overflow-hidden font-bold text-sm">
+                  <img
+                    src={avatar.url}
+                    alt="Happy patient"
+                    className="w-full h-full object-cover"
+                    onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.parentElement.textContent = avatar.initial; }}
+                  />
                 </div>
               ))}
-              <div className="w-10 h-10 rounded-full border-2 border-slate-50 bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-bold font-mono">
+              <div className="w-10 h-10 rounded-full border-2 border-slate-50 bg-primary-600 text-white flex items-center justify-center text-xs font-bold">
                 +1k
               </div>
             </div>
@@ -137,61 +165,43 @@ export const Landing = () => {
 )};
 
 export const HealthInformation = () => {
-  const posts = [
-    {
-      id: 1,
-      image: "https://images.unsplash.com/photo-1581056771107-24ca5f033842?q=80&w=600&auto=format&fit=crop",
-      category: "Clinical Care",
-      title: "The Benefits of Regular Clinical Checkups",
-      excerpt: "Routine clinic visits can help catch potential issues early before they become severe. Learn how often you should visit your primary care physician."
-    },
-    {
-      id: 2,
-      image: "https://images.unsplash.com/photo-1505576399279-565b52d4ac71?q=80&w=600&auto=format&fit=crop",
-      category: "Chronic Disease",
-      title: "Managing Chronic Conditions Effectively",
-      excerpt: "Living with diabetes or hypertension? Discover actionable strategies to maintain a healthy lifestyle and keep your markers in check."
-    },
-    {
-      id: 3,
-      image: "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=600&auto=format&fit=crop",
-      category: "Pediatrics",
-      title: "Pediatric Care for Your Growing Child",
-      excerpt: "From crucial vaccinations to developmental milestones, ensure your child gets the best start in life with expert pediatric advice."
-    },
-    {
-      id: 4,
-      image: "https://images.unsplash.com/photo-1490645935967-10de6ba17061?q=80&w=600&auto=format&fit=crop",
-      category: "Nutrition",
-      title: "Nutrition Tips for a Healthy Heart",
-      excerpt: "Diet plays a pivotal role in cardiovascular health. Explore heart-healthy foods that you can easily incorporate into your daily meals."
-    },
-    {
-      id: 5,
-      image: "https://images.unsplash.com/photo-1579154204601-01588f351e67?q=80&w=600&auto=format&fit=crop",
-      category: "Diagnostics",
-      title: "Understanding Your Annual Lab Results",
-      excerpt: "What do your blood test numbers actually mean? A simple guide to demystifying your cholesterol, blood sugar, and CBC panels."
-    },
-    {
-      id: 6,
-      image: "https://images.unsplash.com/photo-1543807535-eceef0bc6508?q=80&w=600&auto=format&fit=crop",
-      category: "Wellness",
-      title: "Mental Health: Reducing Stress in Daily Life",
-      excerpt: "Stress affects both your mind and your body. Implement these daily mindfulness and relaxation strategies for holistic wellness."
-    }
-  ];
+  const { t } = useTranslation();
+  const [activeArticle, setActiveArticle] = React.useState(null);
+  const [showAll, setShowAll] = React.useState(false);
+
+  const articleImages = {
+    1: "https://images.unsplash.com/photo-1581056771107-24ca5f033842?q=80&w=600&auto=format&fit=crop",
+    2: "https://images.unsplash.com/photo-1505576399279-565b52d4ac71?q=80&w=600&auto=format&fit=crop",
+    3: "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=600&auto=format&fit=crop",
+    4: "https://images.unsplash.com/photo-1490645935967-10de6ba17061?q=80&w=600&auto=format&fit=crop",
+    5: "https://images.unsplash.com/photo-1579154204601-01588f351e67?q=80&w=600&auto=format&fit=crop",
+    6: "https://images.unsplash.com/photo-1506126613408-eca07ce68773?q=80&w=600&auto=format&fit=crop",
+    7: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=600&auto=format&fit=crop",
+    8: "https://images.unsplash.com/photo-1559757148-5c350d0d3c56?q=80&w=600&auto=format&fit=crop",
+    9: "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?q=80&w=600&auto=format&fit=crop",
+  };
+
+  const allPosts = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((id) => ({
+    id,
+    image: articleImages[id],
+    category: t(`healthInfo.articles.${id}.category`),
+    title: t(`healthInfo.articles.${id}.title`),
+    excerpt: t(`healthInfo.articles.${id}.excerpt`),
+    content: t(`healthInfo.articles.${id}.content`),
+  }));
+
+  const visiblePosts = showAll ? allPosts : allPosts.slice(0, 6);
 
   return (
     <section className="py-20 bg-white">
       <div className="container mx-auto px-4 max-w-7xl">
         <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-extrabold text-slate-800 mb-4 tracking-tight">Health Information & Insights</h2>
-          <p className="text-lg text-slate-600 max-w-2xl mx-auto">Stay updated with the latest medical advice, wellness tips, and clinic news directly from our healthcare professionals.</p>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-slate-800 mb-4 tracking-tight">{t('healthInfo.sectionTitle')}</h2>
+          <p className="text-lg text-slate-600 max-w-2xl mx-auto">{t('healthInfo.sectionSubtitle')}</p>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {posts.map(post => (
+          {visiblePosts.map(post => (
             <div key={post.id} className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 group flex flex-col h-full">
               <div className="relative overflow-hidden h-56">
                 <img src={post.image} alt={post.title} className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500" />
@@ -206,8 +216,11 @@ export const HealthInformation = () => {
                 <p className="text-slate-600 mb-6 flex-1 line-clamp-3">
                   {post.excerpt}
                 </p>
-                <button className="text-primary-600 font-semibold flex items-center hover:text-primary-700 transition group/btn mt-auto self-start">
-                  Read Article
+                <button
+                  onClick={() => setActiveArticle(post)}
+                  className="text-primary-600 font-semibold flex items-center hover:text-primary-700 transition group/btn mt-auto self-start"
+                >
+                  {t('healthInfo.readArticle')}
                   <svg className="ml-2 w-4 h-4 transform group-hover/btn:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
                 </button>
               </div>
@@ -216,11 +229,77 @@ export const HealthInformation = () => {
         </div>
         
         <div className="mt-12 text-center">
-          <button className="bg-slate-50 text-slate-700 px-8 py-3 rounded-full font-bold border border-slate-200 hover:bg-slate-100 transition shadow-sm">
-            View All Posts
+          <button
+            onClick={() => setShowAll(prev => !prev)}
+            className="bg-slate-50 text-slate-700 px-8 py-3 rounded-full font-bold border border-slate-200 hover:bg-primary-50 hover:border-primary-200 hover:text-primary-700 transition shadow-sm"
+          >
+            {showAll ? t('healthInfo.showLess') : t('healthInfo.viewAllPosts', { count: allPosts.length })}
           </button>
         </div>
       </div>
+
+      {/* Article Reader Modal */}
+      {activeArticle && (
+        <div
+          className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setActiveArticle(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal image header */}
+            <div className="relative h-52 shrink-0">
+              <img src={activeArticle.image} alt={activeArticle.title} className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-900/70 to-transparent" />
+              <div className="absolute bottom-4 left-6 right-12">
+                <span className="text-xs font-bold uppercase tracking-wider text-white/80 bg-primary-600/80 px-2 py-0.5 rounded-full">
+                  {activeArticle.category}
+                </span>
+                <h2 className="text-xl font-extrabold text-white mt-2 leading-snug">{activeArticle.title}</h2>
+              </div>
+              <button
+                onClick={() => setActiveArticle(null)}
+                className="absolute top-4 right-4 bg-white/20 hover:bg-white/40 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-lg transition backdrop-blur-sm"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Article body */}
+            <div className="overflow-y-auto p-6 flex-1">
+              <p className="text-slate-500 text-sm italic mb-5 border-l-4 border-primary-200 pl-4">{activeArticle.excerpt}</p>
+              <div className="prose prose-slate max-w-none text-slate-700 text-sm leading-relaxed space-y-4">
+                {activeArticle.content.split('\n\n').map((para, i) => {
+                  if (para.startsWith('**') && para.endsWith('**')) {
+                    return <h4 key={i} className="font-bold text-slate-800 text-base mt-4">{para.replace(/\*\*/g, '')}</h4>;
+                  }
+                  // Render bold inline text
+                  const parts = para.split(/(\*\*[^*]+\*\*)/g);
+                  return (
+                    <p key={i}>
+                      {parts.map((part, j) =>
+                        part.startsWith('**') && part.endsWith('**')
+                          ? <strong key={j}>{part.replace(/\*\*/g, '')}</strong>
+                          : part
+                      )}
+                    </p>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 shrink-0 flex justify-end">
+              <button
+                onClick={() => setActiveArticle(null)}
+                className="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-lg transition text-sm"
+              >
+                {t('healthInfo.closeBtn')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };

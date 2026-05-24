@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
 import { Activity, Eye, EyeOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { loginSchema, formatZodErrors } from '../utils/validationSchemas';
 
 const Login = () => {
   const { t } = useTranslation();
@@ -10,6 +11,7 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -23,11 +25,22 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
+    
+    const result = loginSchema.safeParse({ email, password });
+    if (!result.success) {
+      setFieldErrors(formatZodErrors(result.error));
+      return;
+    }
+
     setLoading(true);
     try {
       const data = await login(email, password);
-      if (data.user.role === 'company_admin') navigate('/admin');
-      else if (data.user.role === 'doctor') navigate('/doctor');
+      const role = data.user.role;
+      if (role === 'company_admin') navigate('/admin');
+      else if (role === 'doctor') navigate('/doctor');
+      else if (role === 'laboratorist') navigate('/laboratorist');
+      else if (role === 'radiologist') navigate('/radiologist');
       else navigate('/patient');
     } catch (err) {
       setError(err);
@@ -59,12 +72,12 @@ const Login = () => {
               type="email" 
               name="email"
               autoComplete="off"
-              className="w-full border-slate-300 border rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" 
+              className={`w-full border rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition ${fieldErrors.email ? 'border-red-500' : 'border-slate-300'}`} 
               value={email} 
               onChange={(e) => setEmail(e.target.value)} 
               placeholder={t('auth.login.emailPlaceholder')}
-              required 
             />
+            {fieldErrors.email && <p className="text-red-500 text-xs mt-1">{fieldErrors.email}</p>}
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">{t('auth.login.passwordLabel')}</label>
@@ -73,11 +86,10 @@ const Login = () => {
                 type={showPassword ? "text" : "password"} 
                 name="password"
                 autoComplete="new-password"
-                className="w-full border-slate-300 border rounded-md p-3 pr-10 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" 
+                className={`w-full border rounded-md p-3 pr-10 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition ${fieldErrors.password ? 'border-red-500' : 'border-slate-300'}`} 
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)} 
                 placeholder={t('auth.login.passwordPlaceholder')}
-                required 
               />
               <button
                 type="button"
@@ -88,6 +100,7 @@ const Login = () => {
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
             </div>
+            {fieldErrors.password && <p className="text-red-500 text-xs mt-1">{fieldErrors.password}</p>}
             <div className="text-right mt-1">
               <Link to="/forgot-password" className="text-sm text-primary-600 hover:text-primary-800 transition">{t('auth.login.forgotPassword')}</Link>
             </div>

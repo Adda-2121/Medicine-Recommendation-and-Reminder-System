@@ -5,6 +5,7 @@ import api from '../services/api';
 import { User, Mail, Lock, Shield, Calendar, Edit3, Save, X, Eye, EyeOff, UploadCloud, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ConfirmationModal from '../components/common/ConfirmationModal';
+import { profileUpdateSchema, passwordUpdateSchema, formatZodErrors } from '../utils/validationSchemas';
 
 const Profile = () => {
   const { user } = useContext(AuthContext);
@@ -20,6 +21,8 @@ const Profile = () => {
 
   const [isEditingPassword, setIsEditingPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [profileFieldErrors, setProfileFieldErrors] = useState({});
+  const [passwordFieldErrors, setPasswordFieldErrors] = useState({});
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
     newPassword: '',
@@ -38,11 +41,35 @@ const Profile = () => {
         phone: '',
         address: ''
       });
+      setProfileFieldErrors({});
     }
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
+    setProfileFieldErrors({});
+
+    const result = profileUpdateSchema.safeParse({ 
+      name: formData.name, 
+      age: 20, // filler for age
+      sex: 'Male', // filler for sex, we only want to validate name
+      phone_number: formData.phone || undefined
+    });
+    // Wait, profileUpdateSchema expects age and sex.
+    // Let me construct a partial schema just for Profile.jsx, or use .partial().
+    // Actually, I can just do profileUpdateSchema.partial().safeParse(...)
+    
+    const partialResult = profileUpdateSchema.partial().safeParse({ 
+      name: formData.name, 
+      email: formData.email,
+      phone_number: formData.phone || undefined 
+    });
+
+    if (!partialResult.success) {
+      setProfileFieldErrors(formatZodErrors(partialResult.error));
+      return;
+    }
+
     try {
       const res = await api.put('/users/profile', { 
         name: formData.name, 
@@ -95,15 +122,19 @@ const Profile = () => {
 
   const handlePasswordSave = async (e) => {
     e.preventDefault();
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      return toast.error('Passwords do not match');
+    setPasswordFieldErrors({});
+
+    const result = passwordUpdateSchema.safeParse({
+      currentPassword: passwordData.currentPassword,
+      newPassword: passwordData.newPassword,
+      confirmPassword: passwordData.confirmPassword
+    });
+
+    if (!result.success) {
+      setPasswordFieldErrors(formatZodErrors(result.error));
+      return;
     }
-    if (passwordData.newPassword.length < 8) {
-      return toast.error('Password must be at least 8 characters long');
-    }
-    if (!passwordData.currentPassword) {
-      return toast.error('Please enter your current password');
-    }
+
     try {
       const res = await api.put('/users/profile', { 
         currentPassword: passwordData.currentPassword, 
@@ -112,6 +143,7 @@ const Profile = () => {
       toast.success(res.data.message || 'Password updated successfully.');
       setIsEditingPassword(false);
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setPasswordFieldErrors({});
     } catch (err) {
        toast.error(err.response?.data?.message || err.message || 'Failed to update password');
     }
@@ -206,26 +238,29 @@ const Profile = () => {
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">{t('profile.fullName')}</label>
                   <input 
-                    type="text" required disabled={!isEditing}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50 disabled:text-slate-500 transition-colors"
+                    type="text" disabled={!isEditing}
+                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50 disabled:text-slate-500 transition-colors ${profileFieldErrors.name ? 'border-red-500' : 'border-slate-300'}`}
                     value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})}
                   />
+                  {profileFieldErrors.name && <p className="text-red-500 text-xs mt-1">{profileFieldErrors.name}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">{t('profile.emailAddress')}</label>
                   <input 
-                    type="email" required disabled={!isEditing}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50 disabled:text-slate-500 transition-colors"
+                    type="email" disabled={!isEditing}
+                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50 disabled:text-slate-500 transition-colors ${profileFieldErrors.email ? 'border-red-500' : 'border-slate-300'}`}
                     value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})}
                   />
+                  {profileFieldErrors.email && <p className="text-red-500 text-xs mt-1">{profileFieldErrors.email}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">{t('profile.phoneNumber')}</label>
                   <input 
                     type="tel" disabled={!isEditing} placeholder={t('profile.phonePlaceholder')}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50 disabled:text-slate-500 transition-colors"
+                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50 disabled:text-slate-500 transition-colors ${profileFieldErrors.phone_number ? 'border-red-500' : 'border-slate-300'}`}
                     value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})}
                   />
+                  {profileFieldErrors.phone_number && <p className="text-red-500 text-xs mt-1">{profileFieldErrors.phone_number}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">{t('profile.timezone')}</label>
@@ -292,44 +327,47 @@ const Profile = () => {
                        <label className="block text-sm font-medium text-slate-700 mb-1">{t('profile.currentPassword')}</label>
                        <div className="relative">
                          <input 
-                            type={showPassword ? "text" : "password"} required
-                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 pr-10"
+                            type={showPassword ? "text" : "password"} 
+                            className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 pr-10 ${passwordFieldErrors.currentPassword ? 'border-red-500' : 'border-slate-300'}`}
                             value={passwordData.currentPassword} onChange={(e) => setPasswordData({...passwordData, currentPassword: e.target.value})}
                          />
                          <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                          </button>
                        </div>
+                       {passwordFieldErrors.currentPassword && <p className="text-red-500 text-xs mt-1">{passwordFieldErrors.currentPassword}</p>}
                      </div>
                      <div>
                        <label className="block text-sm font-medium text-slate-700 mb-1">{t('profile.newPassword')}</label>
                        <div className="relative">
                          <input 
-                            type={showPassword ? "text" : "password"} required minLength={8}
-                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 pr-10"
+                            type={showPassword ? "text" : "password"} 
+                            className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 pr-10 ${passwordFieldErrors.newPassword ? 'border-red-500' : 'border-slate-300'}`}
                             value={passwordData.newPassword} onChange={(e) => setPasswordData({...passwordData, newPassword: e.target.value})}
                          />
                          <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                          </button>
                        </div>
+                       {passwordFieldErrors.newPassword && <p className="text-red-500 text-xs mt-1">{passwordFieldErrors.newPassword}</p>}
                      </div>
                      <div>
                        <label className="block text-sm font-medium text-slate-700 mb-1">{t('profile.confirmNewPassword')}</label>
                        <div className="relative">
                          <input 
-                            type={showPassword ? "text" : "password"} required minLength={8}
-                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 pr-10"
+                            type={showPassword ? "text" : "password"} 
+                            className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 pr-10 ${passwordFieldErrors.confirmPassword ? 'border-red-500' : 'border-slate-300'}`}
                             value={passwordData.confirmPassword} onChange={(e) => setPasswordData({...passwordData, confirmPassword: e.target.value})}
                          />
                          <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                          </button>
                        </div>
+                       {passwordFieldErrors.confirmPassword && <p className="text-red-500 text-xs mt-1">{passwordFieldErrors.confirmPassword}</p>}
                      </div>
                    </div>
                    <div className="mt-4 flex justify-end space-x-2">
-                     <button type="button" onClick={() => { setIsEditingPassword(false); setPasswordData({currentPassword:'', newPassword:'', confirmPassword:''}); setShowPassword(false); }} className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-100 text-sm font-medium">{t('common.cancel')}</button>
+                     <button type="button" onClick={() => { setIsEditingPassword(false); setPasswordData({currentPassword:'', newPassword:'', confirmPassword:''}); setShowPassword(false); setPasswordFieldErrors({}); }} className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-100 text-sm font-medium">{t('common.cancel')}</button>
                      <button type="submit" className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium shadow-sm flex items-center">
                         <Save size={16} className="mr-2" /> {t('profile.savePassword')}
                      </button>

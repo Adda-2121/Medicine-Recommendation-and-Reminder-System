@@ -129,6 +129,20 @@ exports.verifyPayment = async (req, res) => {
           payment.expires_at = expiresAt;
           await payment.save();
           
+          // Update Referral status if applicable
+          try {
+            const Referral = require('../models/Referral');
+            if (Referral) {
+              const referral = await Referral.findOne({ where: { specialist_consultation_id: payment.consultation_id } });
+              if (referral) {
+                referral.status = 'assigned';
+                await referral.save();
+              }
+            }
+          } catch (err) {
+            console.error('Error updating referral status on payment verification:', err);
+          }
+
           // Trigger auto assignment now that payment is verified
           const consultationController = require('./consultationController');
           if (consultationController.triggerAutoAssignment) {

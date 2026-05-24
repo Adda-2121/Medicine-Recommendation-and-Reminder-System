@@ -1,4 +1,4 @@
-const { Consultation, User, Payment, Availability } = require('../models');
+const { Consultation, User, Payment, Availability, Referral } = require('../models');
 const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { sendPushNotification } = require('../utils/pushHelper');
@@ -79,6 +79,7 @@ exports.requestConsultation = async (req, res) => {
       report_url,
       consultation_type,
       target_specialty,
+      doctor_id,
     } = req.body;
 
     // ── Triage routing ────────────────────────────────────────────────────────
@@ -122,6 +123,17 @@ exports.requestConsultation = async (req, res) => {
       specialty = null; // ensure null for GP
     }
 
+    // Verify if patient explicitly selected an appropriate doctor
+    let selectedDoctorId = null;
+    if (doctor_id) {
+      const chosenDoc = await User.findOne({
+        where: { id: doctor_id, role: 'doctor', is_verified: true }
+      });
+      if (chosenDoc) {
+        selectedDoctorId = chosenDoc.id;
+      }
+    }
+
     // symptoms_description is optional when a triage reason is provided
     const finalSymptoms = symptoms_description || resolvedReason || 'Not specified';
 
@@ -129,7 +141,7 @@ exports.requestConsultation = async (req, res) => {
 
     const consultation = await Consultation.create({
       patient_id: req.user.id,
-      doctor_id: null,
+      doctor_id: selectedDoctorId,
       symptoms_description: finalSymptoms,
       reason: resolvedReason,
       reason_for_visit: reason_for_visit || null,
@@ -142,28 +154,9 @@ exports.requestConsultation = async (req, res) => {
       target_specialty: specialty,
     });
 
-    // Check if patient has an active subscription
-    const activeSub = await Payment.findOne({
-      where: {
-        patient_id: req.user.id,
-        status: 'verified',
-        expires_at: { [Op.gt]: new Date() }
-      },
-      order: [['expires_at', 'DESC']]
-    });
-
-    const { Setting } = require('../models');
     let paymentStatus = 'pending';
     let expiresAt = null;
-    let paymentAmount = null;
-
-    if (activeSub) {
-      paymentStatus = 'verified';
-      expiresAt = activeSub.expires_at;
-      paymentAmount = 0;
-    } else {
-      paymentAmount = await resolveConsultationFee(type, specialty);
-    }
+    let paymentAmount = await resolveConsultationFee(type, specialty);
 
     const referenceCode = 'TEL-' + crypto.randomBytes(3).toString('hex').toUpperCase();
 
@@ -191,6 +184,32 @@ exports.requestConsultation = async (req, res) => {
   } catch (error) {
     console.error('Request consultation error:', error);
     res.status(500).json({ message: 'Server error requesting consultation' });
+  }
+};
+
+// @desc    Clear completed consultation history for the logged-in patient
+// @route   DELETE /api/consultations/history
+// @access  Private (Patient)
+exports.clearHistory = async (req, res) => {
+  try {
+    if (req.user.role !== 'patient') {
+      return res.status(403).json({ message: 'Only patients can clear their history.' });
+    }
+
+    const deleted = await Consultation.destroy({
+      where: {
+        patient_id: req.user.id,
+        status: 'completed',
+      },
+    });
+
+    res.status(200).json({
+      message: `Cleared ${deleted} completed consultation(s) from your history.`,
+      deleted,
+    });
+  } catch (error) {
+    console.error('Clear history error:', error);
+    res.status(500).json({ message: 'Server error clearing history.' });
   }
 };
 
@@ -368,6 +387,29 @@ exports.triggerAutoAssignment = async () => {
     });
 
     for (const consultation of pendingConsultations) {
+      if (consultation.doctor_id) {
+        // Patient selected a specific doctor!
+        const selectedDoctor = await User.findByPk(consultation.doctor_id);
+        if (selectedDoctor) {
+          consultation.status = 'assigned';
+          consultation.queue_status = 'assigned';
+          await consultation.save();
+
+          // Auto-mark doctor as busy
+          await User.update({ availability_status: 'busy' }, { where: { id: selectedDoctor.id } });
+
+          sendPushNotification(consultation.patient_id, 'Doctor Assigned', `Dr. ${selectedDoctor.name} has been assigned to your consultation.`, 'consultation', '/consultations').catch(() => {});
+          sendPushNotification(selectedDoctor.id, 'New Patient', 'A new patient selected you.', 'consultation', '/consultations').catch(() => {});
+
+          if (global.io) {
+            global.io.to(`user_${consultation.patient_id}`).emit('doctor_assigned', { consultation_id: consultation.id, doctor_name: selectedDoctor.name });
+            global.io.to(`user_${selectedDoctor.id}`).emit('new_patient_assigned', { consultation_id: consultation.id });
+            global.io.emit('queue_update', {});
+          }
+          continue; // Move to the next pending consultation
+        }
+      }
+
       // Determine which specialty to look for
       let requiredSpecialty = null;
       if (consultation.consultation_type === 'specialist' && consultation.target_specialty) {
@@ -694,6 +736,9 @@ exports.resumeConsultation = async (req, res) => {
 // @desc    GP refers patient to a specialist (creates a new linked consultation)
 // @route   POST /api/consultations/:id/refer
 // @access  Private (Doctor)
+// @desc    GP refers patient to a specialist (creates a new linked consultation)
+// @route   POST /api/consultations/:id/refer
+// @access  Private (Doctor)
 exports.referToSpecialist = async (req, res) => {
   try {
     if (req.user.role !== 'doctor') {
@@ -705,7 +750,7 @@ exports.referToSpecialist = async (req, res) => {
       'Pediatrician', 'Gynecologist', 'Pulmonologist', 'Neurologist', 'Orthopedic'
     ];
 
-    const { target_specialty, referral_notes } = req.body;
+    const { target_specialty, referral_notes, urgency } = req.body;
 
     if (!target_specialty || !VALID_SPECIALTIES.includes(target_specialty)) {
       return res.status(400).json({ message: 'A valid specialist type is required.' });
@@ -720,64 +765,179 @@ exports.referToSpecialist = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized for this consultation.' });
     }
 
-    // Create the specialist consultation linked to the original
-    const referral = await Consultation.create({
+    // Resolve priority based on urgency
+    const urgencyLower = (urgency || 'routine').toLowerCase();
+    const urgencyPriorityMap = {
+      routine: 'low',
+      urgent: 'medium',
+      emergency: 'high'
+    };
+    const resolvedPriority = urgencyPriorityMap[urgencyLower] || 'low';
+
+    // ── Payment Discount Logic ────────────────────────────────────────────────
+    // Get the standard fee for this specialist type
+    const standardFee = await resolveConsultationFee('specialist', target_specialty);
+    // 20% Referral Discount
+    const discountAmount = standardFee * 0.20;
+    const remainingPayment = standardFee - discountAmount;
+
+    // ── System Automatic Specialist Assignment ────────────────────────────────
+    // Finds verified specialists of the matching target specialty, prioritizing availability and least workload
+    let candidates = await User.findAll({
+      where: {
+        role: 'doctor',
+        specialty: target_specialty,
+        is_verified: true,
+      }
+    });
+
+    let assignedSpecialist = null;
+    if (candidates.length > 0) {
+      const statusWeight = { 'available': 1, 'busy': 2, 'offline': 3 };
+
+      const candidatesWithWorkload = await Promise.all(candidates.map(async (doc) => {
+        const activeCount = await Consultation.count({
+          where: { doctor_id: doc.id, status: { [Op.in]: ['assigned', 'in_progress'] } }
+        });
+        return {
+          doc,
+          weight: statusWeight[doc.availability_status] || 3,
+          workload: activeCount
+        };
+      }));
+
+      // Sort by availability status weight first, then workload (least workload first)
+      candidatesWithWorkload.sort((a, b) => {
+        if (a.weight !== b.weight) return a.weight - b.weight;
+        return a.workload - b.workload;
+      });
+
+      assignedSpecialist = candidatesWithWorkload[0].doc;
+    }
+
+    // ── Create Referral Record ────────────────────────────────────────────────
+    const referralRecord = await Referral.create({
+      gp_consultation_id: original.id,
+      specialist_consultation_id: null, // set after consultation is created
       patient_id: original.patient_id,
-      doctor_id: null,
+      gp_id: req.user.id,
+      specialist_id: assignedSpecialist ? assignedSpecialist.id : null,
+      specialty: target_specialty,
+      referral_note: referral_notes || 'No notes provided by GP.',
+      urgency: urgencyLower,
+      status: 'pending_payment',
+      priority: resolvedPriority,
+      discount_amount: discountAmount,
+      remaining_payment: remainingPayment
+    });
+
+    // ── Create Specialist Consultation ────────────────────────────────────────
+    const specialistConsultation = await Consultation.create({
+      patient_id: original.patient_id,
+      doctor_id: assignedSpecialist ? assignedSpecialist.id : null,
       symptoms_description: referral_notes || original.symptoms_description,
       reason: `Referred by GP for ${target_specialty}`,
       status: 'pending',
-      severity_level: original.severity_level,
-      queue_status: 'waiting',
+      severity_level: resolvedPriority,
+      queue_status: assignedSpecialist ? 'assigned' : 'waiting',
       consultation_type: 'specialist',
       target_specialty,
       referred_by_id: original.id,
     });
 
-    // Reuse the existing verified payment if available (same subscription covers it)
-    const { Setting } = require('../models');
-    let paymentStatus = 'pending';
-    let expiresAt = null;
-    let paymentAmount = null;
+    // Link the specialist consultation back to the referral record
+    referralRecord.specialist_consultation_id = specialistConsultation.id;
+    await referralRecord.save();
 
-    if (original.Payment && original.Payment.status === 'verified' && original.Payment.expires_at && new Date(original.Payment.expires_at) > new Date()) {
-      paymentStatus = 'verified';
-      expiresAt = original.Payment.expires_at;
-      paymentAmount = 0;
-    } else {
-      paymentAmount = await resolveConsultationFee('specialist', target_specialty);
-    }
-
+    // ── Create payment record for specialist consultation ──────────────────────
     const crypto = require('crypto');
     const referenceCode = 'REF-' + crypto.randomBytes(3).toString('hex').toUpperCase();
 
-    await Payment.create({
-      consultation_id: referral.id,
+    const payment = await Payment.create({
+      consultation_id: specialistConsultation.id,
       patient_id: original.patient_id,
       reference_code: referenceCode,
-      status: paymentStatus,
-      amount: paymentAmount,
-      expires_at: expiresAt,
+      status: 'pending',
+      amount: remainingPayment,
+      expires_at: null,
     });
 
-    // Notify patient
+    // ── Notification Dispatch ────────────────────────────────────────────────
+    // Notify Patient
     await sendPushNotification(
       original.patient_id,
-      'Referred to Specialist',
-      `Your GP has referred you to a ${target_specialty}. A new consultation has been created.`,
+      'New Referral: Pending Payment',
+      `Your GP referred you to a ${target_specialty} (Dr. ${assignedSpecialist ? assignedSpecialist.name : 'TBD'}). Remaining payment: ${remainingPayment} ETB.`,
       'referral',
       '/consultations'
     );
 
-    // Trigger auto-assignment for the new specialist consultation
-    exports.triggerAutoAssignment();
+    // Notify Specialist (if assigned)
+    if (assignedSpecialist) {
+      await sendPushNotification(
+        assignedSpecialist.id,
+        'New Referral Assigned',
+        `You have been assigned to a referred case for ${target_specialty}. (Awaiting patient payment)`,
+        'referral',
+        '/consultations'
+      );
+    }
 
     res.status(201).json({
-      message: `Patient referred to ${target_specialty} successfully.`,
-      referral,
+      message: `Patient referred to ${target_specialty} successfully. Specialist assigned.`,
+      referral: referralRecord,
+      consultation: { ...specialistConsultation.toJSON(), Payment: payment }
     });
   } catch (error) {
     console.error('Refer to specialist error:', error);
     res.status(500).json({ message: 'Server error creating referral.' });
+  }
+};
+
+// @desc    Get referral details including GP notes and lab/radiology results
+// @route   GET /api/consultations/:id/referral
+// @access  Private (Patient, Doctor)
+exports.getReferralDetails = async (req, res) => {
+  try {
+    const { ServiceRequest, ServiceItem } = require('../models');
+
+    // Find the referral record where this consultation is the specialist consultation
+    const referral = await Referral.findOne({
+      where: {
+        [Op.or]: [
+          { specialist_consultation_id: req.params.id },
+          { gp_consultation_id: req.params.id }
+        ]
+      },
+      include: [
+        { model: User, as: 'GP', attributes: ['id', 'name', 'email', 'specialty', 'room_number'] },
+        { model: User, as: 'Specialist', attributes: ['id', 'name', 'email', 'specialty', 'room_number', 'work_location'] },
+        { model: User, as: 'Patient', attributes: ['id', 'name', 'email'] },
+        { 
+          model: Consultation, 
+          as: 'GpConsultation', 
+          attributes: ['id', 'symptoms_description', 'reason', 'created_at'],
+          include: [{ model: User, as: 'Doctor', attributes: ['id', 'name', 'specialty'] }]
+        }
+      ]
+    });
+
+    if (!referral) {
+      return res.status(404).json({ message: 'Referral details not found for this consultation.' });
+    }
+
+    // Get any service requests (labs/radiology results) associated with the GP consultation
+    const serviceRequests = await ServiceRequest.findAll({
+      where: { consultation_id: referral.gp_consultation_id },
+      include: [{ model: ServiceItem, as: 'ServiceItem' }]
+    });
+
+    res.status(200).json({
+      referral,
+      serviceRequests
+    });
+  } catch (error) {
+    console.error('Get referral details error:', error);
+    res.status(500).json({ message: 'Server error retrieving referral details.' });
   }
 };

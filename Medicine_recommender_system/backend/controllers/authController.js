@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { Op } = require('sequelize');
-const { User } = require('../models');
+const { User, sequelize } = require('../models');
 const sendEmail = require('../utils/sendEmail');
 const { sendSMS } = require('../utils/smsService');
 const validateEmail = require('../utils/validateEmail');
@@ -52,9 +52,18 @@ exports.sendVerificationOtp = async (req, res) => {
       `This code expires in 10 minutes. Do not share it with anyone.\n\n` +
       `If you did not request this, please ignore this email.`;
 
-    await sendEmail({ email, subject: 'HealthConnect — Email Verification Code', message });
-
-    return res.status(200).json({ message: 'Verification code sent to your email.' });
+    try {
+      await sendEmail({ email, subject: 'HealthConnect — Email Verification Code', message });
+      return res.status(200).json({ message: 'Verification code sent to your email.' });
+    } catch (emailError) {
+      console.error('\n[WARNING] Email failed to send due to network/SMTP issues.', emailError.message);
+      if (process.env.NODE_ENV === 'development') {
+        return res.status(200).json({ 
+          message: `Email sending failed (network blocked). DEV MODE FALLBACK: Your verification code is ${otp}` 
+        });
+      }
+      throw emailError;
+    }
   } catch (error) {
     console.error('Send verification OTP error:', error);
     return res.status(500).json({ message: 'Failed to send verification email. Please try again.' });
@@ -268,8 +277,18 @@ exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check for user
-    const user = await User.findOne({ where: { email } });
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
+
+    // Case-insensitive email lookup
+    const user = await User.findOne({
+      where: sequelize.where(
+        sequelize.fn('LOWER', sequelize.col('email')),
+        email.toLowerCase().trim()
+      )
+    });
+
     if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
@@ -393,11 +412,21 @@ exports.forgotPassword = async (req, res) => {
         });
         res.status(200).json({ message: 'Email sent' });
       } catch (err) {
-        console.log(err);
+        console.error('\n[WARNING] Email failed to send due to network/SMTP issues.', err.message);
+        console.log(`[DEV MODE] Password Reset Link for ${user.email}:\n${resetUrl}\n`);
+        
+        // In development, if email fails, provide the link directly so testing can continue
+        if (process.env.NODE_ENV === 'development') {
+          return res.status(200).json({ 
+            message: `Email sending failed (network blocked). DEV MODE FALLBACK activated.`,
+            devResetUrl: resetUrl
+          });
+        }
+        
         user.resetPasswordToken = null;
         user.resetPasswordExpire = null;
         await user.save();
-        return res.status(500).json({ message: 'Email could not be sent' });
+        return res.status(500).json({ message: 'Email could not be sent. Please contact support.' });
       }
 
     } else if (resetMethod === 'sms') {

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import {
@@ -69,9 +69,6 @@ const formatWait = (mins) => {
 
 // Doctor card used in step 2
 const DoctorCard = ({ doctor, selected, onSelect }) => {
-  const isAvailable = doctor.availability_status === 'available';
-  const isBusy = doctor.availability_status === 'busy';
-  const isOffline = doctor.availability_status === 'offline';
   const queue = doctor.activeQueueCount ?? 0;
   const waitMins = doctor.estimatedWaitMins ?? 0;
 
@@ -79,38 +76,24 @@ const DoctorCard = ({ doctor, selected, onSelect }) => {
     <button
       type="button"
       onClick={() => onSelect(doctor)}
-      className={`w-full text-left rounded-xl border-2 transition-all duration-200 overflow-hidden ${
+      className={`w-full text-left bg-white rounded-xl border-2 transition-all duration-200 overflow-hidden ${
         selected
           ? 'border-primary-500 shadow-md shadow-primary-100'
-          : isOffline
-          ? 'border-slate-200 bg-slate-50 opacity-70 hover:opacity-90'
-          : 'border-slate-200 bg-white hover:border-primary-300 hover:shadow-sm'
+          : 'border-slate-200 hover:border-primary-300 hover:shadow-sm'
       }`}
     >
-      {/* Status bar across the top */}
-      <div className={`h-1 w-full ${
-        isAvailable ? 'bg-emerald-400' :
-        isBusy ? 'bg-amber-400' :
-        'bg-slate-300'
-      }`} />
+      {/* Decorative bar across the top */}
+      <div className="h-1 w-full bg-primary-400" />
 
       <div className="p-4">
         <div className="flex items-start gap-3">
           {/* Avatar */}
           <div className="relative shrink-0">
             <div className={`h-12 w-12 rounded-full flex items-center justify-center font-bold text-lg uppercase ${
-              selected ? 'bg-primary-600 text-white' :
-              isOffline ? 'bg-slate-200 text-slate-400' :
-              'bg-primary-100 text-primary-600'
+              selected ? 'bg-primary-600 text-white' : 'bg-primary-100 text-primary-600'
             }`}>
               {doctor.name.charAt(0)}
             </div>
-            {/* Online dot */}
-            <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${
-              isAvailable ? 'bg-emerald-500' :
-              isBusy ? 'bg-amber-500' :
-              'bg-slate-400'
-            }`} />
           </div>
 
           {/* Info */}
@@ -121,45 +104,23 @@ const DoctorCard = ({ doctor, selected, onSelect }) => {
             </div>
             <p className="text-xs text-primary-600 font-medium mt-0.5">{doctor.specialty || 'General Practitioner'}</p>
 
-            {/* Status + queue row */}
+            {/* Queue row */}
             <div className="flex items-center gap-2 mt-2 flex-wrap">
-              {/* Availability badge */}
-              <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${
-                isAvailable ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                isBusy ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                'bg-slate-100 text-slate-500 border border-slate-200'
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${
-                  isAvailable ? 'bg-emerald-500 animate-pulse' :
-                  isBusy ? 'bg-amber-500' :
-                  'bg-slate-400'
-                }`} />
-                {isAvailable ? 'Available' : isBusy ? 'Busy' : 'Offline'}
+              <span className="inline-flex items-center gap-1 text-xs text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+                <Users size={10} />
+                {queue === 0 ? 'No queue' : `${queue} in queue`}
               </span>
-
-              {/* Queue count — only show when not offline */}
-              {!isOffline && (
-                <span className="inline-flex items-center gap-1 text-xs text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
-                  <Users size={10} />
-                  {queue === 0 ? 'No queue' : `${queue} in queue`}
-                </span>
-              )}
             </div>
 
             {/* Wait time + meta row */}
             <div className="flex items-center gap-3 mt-1.5 flex-wrap">
               {/* Estimated wait */}
-              {!isOffline && (
-                <span className={`inline-flex items-center gap-1 text-xs font-medium ${
-                  waitMins === 0 ? 'text-emerald-600' : 'text-slate-500'
-                }`}>
-                  <Clock size={10} />
-                  {formatWait(waitMins)}
-                </span>
-              )}
-              {isOffline && (
-                <span className="text-xs text-slate-400 italic">Not accepting patients</span>
-              )}
+              <span className={`inline-flex items-center gap-1 text-xs font-medium ${
+                waitMins === 0 ? 'text-emerald-600' : 'text-slate-500'
+              }`}>
+                <Clock size={10} />
+                {formatWait(waitMins)}
+              </span>
 
               {/* Experience */}
               {doctor.experience_years > 0 && (
@@ -465,33 +426,9 @@ const FindDoctor = () => {
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">Showing {effectiveSpecialty} specialists</p>
                 </div>
-                {/* Availability summary pills */}
+                {/* Refresh button */}
                 {!loadingDoctors && doctors.length > 0 && (
                   <div className="flex items-center gap-1.5">
-                    {(() => {
-                      const avail = doctors.filter(d => d.availability_status === 'available').length;
-                      const busy  = doctors.filter(d => d.availability_status === 'busy').length;
-                      const off   = doctors.filter(d => d.availability_status === 'offline').length;
-                      return (
-                        <>
-                          {avail > 0 && (
-                            <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-full">
-                              {avail} available
-                            </span>
-                          )}
-                          {busy > 0 && (
-                            <span className="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full">
-                              {busy} busy
-                            </span>
-                          )}
-                          {off > 0 && (
-                            <span className="text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-full">
-                              {off} offline
-                            </span>
-                          )}
-                        </>
-                      );
-                    })()}
                     <button
                       type="button"
                       onClick={() => fetchDoctors(useGpOverride ? null : triageResult.specialty)}
@@ -586,20 +523,6 @@ const FindDoctor = () => {
                     <p className="font-bold text-slate-800">Dr. {selectedDoctor.name}</p>
                     <p className="text-sm text-primary-600 font-medium">{selectedDoctor.specialty || 'General Practitioner'}</p>
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
-                        selectedDoctor.availability_status === 'available'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : selectedDoctor.availability_status === 'busy'
-                          ? 'bg-amber-50 text-amber-700 border-amber-200'
-                          : 'bg-slate-100 text-slate-500 border-slate-200'
-                      }`}>
-                        <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1 ${
-                          selectedDoctor.availability_status === 'available' ? 'bg-emerald-500' :
-                          selectedDoctor.availability_status === 'busy' ? 'bg-amber-500' : 'bg-slate-400'
-                        }`} />
-                        {selectedDoctor.availability_status === 'available' ? 'Available' :
-                         selectedDoctor.availability_status === 'busy' ? 'Busy' : 'Offline'}
-                      </span>
                       {selectedDoctor.activeQueueCount !== undefined && (
                         <span className="text-xs text-slate-500 flex items-center gap-1 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
                           <Users size={10} />

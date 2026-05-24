@@ -5,6 +5,7 @@ import { UserPlus, Eye, EyeOff, Mail, Phone, ShieldCheck, RefreshCw, Clock } fro
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import LiveSelfie from '../components/LiveSelfie';
+import { registerStep1Schema, registerDoctorStep3Schema, formatZodErrors } from '../utils/validationSchemas';
 
 const Register = () => {
   const { t } = useTranslation();
@@ -25,6 +26,7 @@ const Register = () => {
   const [experienceDocumentName, setExperienceDocumentName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const { register, login } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -79,8 +81,11 @@ const Register = () => {
 
   const nextStep = () => {
     setError('');
+    setFieldErrors({});
     if (currentStep === 1) {
-        if (!formData.name || !formData.age || !formData.sex || !formData.password || formData.password.length < 8) {
+        const result = registerStep1Schema.safeParse(formData);
+        if (!result.success) {
+            setFieldErrors(formatZodErrors(result.error));
             setError('Please fill all required basic fields correctly.');
             return;
         }
@@ -101,6 +106,7 @@ const Register = () => {
   const prevStep = () => {
     setCurrentStep(prev => prev - 1);
     setError('');
+    setFieldErrors({});
   };
 
   const removeDocument = () => {
@@ -184,12 +190,19 @@ const Register = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
 
-    if (/\d/.test(formData.name)) { setError('Name cannot contain numbers.'); return; }
-    if (formData.password.length < 8) { setError('Password must be at least 8 characters long.'); return; }
     if (verifyStep !== 'verified') { setError('Please verify your identity before registering.'); return; }
-    if (formData.role === 'doctor' && !formData.selfie) { setError('Please capture a live photo for identity verification.'); return; }
-    if (formData.role === 'doctor' && !formData.specialty) { setError('Please select your medical specialty.'); return; }
+    
+    if (formData.role === 'doctor') {
+      if (!formData.selfie) { setError('Please capture a live photo for identity verification.'); return; }
+      const result = registerDoctorStep3Schema.safeParse(formData);
+      if (!result.success) {
+        setFieldErrors(formatZodErrors(result.error));
+        setError('Please fix the errors in the professional details section.');
+        return;
+      }
+    }
 
     setLoading(true);
     try {
@@ -242,39 +255,43 @@ const Register = () => {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">{t('auth.register.nameLabel')}</label>
                 <input type="text" name="name"
-                  className="w-full border-slate-300 border rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition"
-                  value={formData.name} onChange={handleChange} required placeholder={t('auth.register.namePlaceholder')} />
+                  className={`w-full border rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition ${fieldErrors.name ? 'border-red-500' : 'border-slate-300'}`}
+                  value={formData.name} onChange={handleChange} placeholder={t('auth.register.namePlaceholder')} />
+                {fieldErrors.name && <p className="text-red-500 text-xs mt-1">{fieldErrors.name}</p>}
               </div>
               <div className="flex space-x-4">
                 <div className="w-1/2">
                   <label className="block text-sm font-medium text-slate-700 mb-1">{t('auth.register.ageLabel')}</label>
                   <input type="number" name="age"
-                    className="w-full border-slate-300 border rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition"
-                    value={formData.age} onChange={handleChange} required min="0" placeholder="e.g. 25" />
+                    className={`w-full border rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition ${fieldErrors.age ? 'border-red-500' : 'border-slate-300'}`}
+                    value={formData.age} onChange={handleChange} min="0" placeholder="e.g. 25" />
+                  {fieldErrors.age && <p className="text-red-500 text-xs mt-1">{fieldErrors.age}</p>}
                 </div>
                 <div className="w-1/2">
                   <label className="block text-sm font-medium text-slate-700 mb-1">{t('auth.register.sexLabel')}</label>
                   <select name="sex"
-                    className="w-full border-slate-300 border rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition bg-white"
-                    value={formData.sex} onChange={handleChange} required>
+                    className={`w-full border rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-primary-500 transition bg-white ${fieldErrors.sex ? 'border-red-500' : 'border-slate-300'}`}
+                    value={formData.sex} onChange={handleChange}>
                     <option value="" disabled></option>
                     <option value="Male">{t('auth.register.male')}</option>
                     <option value="Female">{t('auth.register.female')}</option>
                   </select>
+                  {fieldErrors.sex && <p className="text-red-500 text-xs mt-1">{fieldErrors.sex}</p>}
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">{t('auth.login.passwordLabel')}</label>
                 <div className="relative">
                   <input type={showPassword ? "text" : "password"} name="password"
-                    className="w-full border-slate-300 border rounded-md p-3 pr-10 focus:outline-none focus:ring-2 focus:ring-primary-500 transition"
-                    value={formData.password} onChange={handleChange} required placeholder={t('auth.login.passwordPlaceholder')} />
+                    className={`w-full border rounded-md p-3 pr-10 focus:outline-none focus:ring-2 focus:ring-primary-500 transition ${fieldErrors.password ? 'border-red-500' : 'border-slate-300'}`}
+                    value={formData.password} onChange={handleChange} placeholder={t('auth.login.passwordPlaceholder')} />
                   <button type="button"
                     className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition"
                     onClick={() => setShowPassword(!showPassword)} tabIndex="-1">
                     {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                   </button>
                 </div>
+                {fieldErrors.password && <p className="text-red-500 text-xs mt-1">{fieldErrors.password}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">{t('auth.register.amA')}</label>
@@ -454,10 +471,9 @@ const Register = () => {
                 </label>
                 <select
                   name="specialty"
-                  required
                   value={formData.specialty}
                   onChange={handleChange}
-                  className="w-full border-slate-300 border rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-primary-500 transition bg-white"
+                  className={`w-full border rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-primary-500 transition bg-white ${fieldErrors.specialty ? 'border-red-500' : 'border-slate-300'}`}
                 >
                   <option value="" disabled>Select your specialty…</option>
                   <option value="General Practitioner">General Practitioner (GP)</option>
@@ -478,22 +494,26 @@ const Register = () => {
                     ✓ {formData.specialty === 'General Practitioner' ? 'You will handle initial patient consultations and referrals.' : `You will receive direct and GP-referred ${formData.specialty} consultations.`}
                   </p>
                 )}
+                {fieldErrors.specialty && <p className="text-red-500 text-xs mt-1">{fieldErrors.specialty}</p>}
               </div>
 
               <h3 className="font-semibold text-slate-700 text-sm pb-2 border-b border-slate-200">Medical License</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">{t('auth.register.licenseNumber')}</label>
-                  <input type="text" name="license_number" className="w-full border-slate-300 border rounded-md p-2 focus:outline-none transition" value={formData.license_number} onChange={handleChange} required placeholder="MED12345XYZ" />
+                  <input type="text" name="license_number" className={`w-full border rounded-md p-2 focus:outline-none transition ${fieldErrors.license_number ? 'border-red-500' : 'border-slate-300'}`} value={formData.license_number} onChange={handleChange} placeholder="MED12345XYZ" />
+                  {fieldErrors.license_number && <p className="text-red-500 text-xs mt-1">{fieldErrors.license_number}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">{t('auth.register.licenseExpiry')}</label>
-                  <input type="date" name="license_expiry_date" className="w-full border-slate-300 border rounded-md p-2 focus:outline-none transition" value={formData.license_expiry_date} onChange={handleChange} required min={new Date().toISOString().split('T')[0]} />
+                  <input type="date" name="license_expiry_date" className={`w-full border rounded-md p-2 focus:outline-none transition ${fieldErrors.license_expiry_date ? 'border-red-500' : 'border-slate-300'}`} value={formData.license_expiry_date} onChange={handleChange} min={new Date().toISOString().split('T')[0]} />
+                  {fieldErrors.license_expiry_date && <p className="text-red-500 text-xs mt-1">{fieldErrors.license_expiry_date}</p>}
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">{t('auth.register.licenseAuth')}</label>
-                <input type="text" name="license_issuing_authority" className="w-full border-slate-300 border rounded-md p-2 focus:outline-none transition" value={formData.license_issuing_authority} onChange={handleChange} required placeholder="e.g. Ministry of Health" />
+                <input type="text" name="license_issuing_authority" className={`w-full border rounded-md p-2 focus:outline-none transition ${fieldErrors.license_issuing_authority ? 'border-red-500' : 'border-slate-300'}`} value={formData.license_issuing_authority} onChange={handleChange} placeholder="e.g. Ministry of Health" />
+                {fieldErrors.license_issuing_authority && <p className="text-red-500 text-xs mt-1">{fieldErrors.license_issuing_authority}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">{t('auth.register.licenseDoc')}</label>
@@ -505,16 +525,19 @@ const Register = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Degree</label>
-                  <input type="text" name="degree" className="w-full border-slate-300 border rounded-md p-2 focus:outline-none transition" value={formData.degree} onChange={handleChange} required placeholder="e.g. MD, MBBS" />
+                  <input type="text" name="degree" className={`w-full border rounded-md p-2 focus:outline-none transition ${fieldErrors.degree ? 'border-red-500' : 'border-slate-300'}`} value={formData.degree} onChange={handleChange} placeholder="e.g. MD, MBBS" />
+                  {fieldErrors.degree && <p className="text-red-500 text-xs mt-1">{fieldErrors.degree}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Graduation Year</label>
-                  <input type="number" name="graduation_year" className="w-full border-slate-300 border rounded-md p-2 focus:outline-none transition" value={formData.graduation_year} onChange={handleChange} required placeholder="YYYY" min="1950" max={new Date().getFullYear()} />
+                  <input type="number" name="graduation_year" className={`w-full border rounded-md p-2 focus:outline-none transition ${fieldErrors.graduation_year ? 'border-red-500' : 'border-slate-300'}`} value={formData.graduation_year} onChange={handleChange} placeholder="YYYY" min="1950" max={new Date().getFullYear()} />
+                  {fieldErrors.graduation_year && <p className="text-red-500 text-xs mt-1">{fieldErrors.graduation_year}</p>}
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">University Name</label>
-                <input type="text" name="university_name" className="w-full border-slate-300 border rounded-md p-2 focus:outline-none transition" value={formData.university_name} onChange={handleChange} required placeholder="e.g. Addis Ababa University" />
+                <input type="text" name="university_name" className={`w-full border rounded-md p-2 focus:outline-none transition ${fieldErrors.university_name ? 'border-red-500' : 'border-slate-300'}`} value={formData.university_name} onChange={handleChange} placeholder="e.g. Addis Ababa University" />
+                {fieldErrors.university_name && <p className="text-red-500 text-xs mt-1">{fieldErrors.university_name}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Degree Certificate</label>
@@ -525,11 +548,13 @@ const Register = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Current Workplace</label>
-                  <input type="text" name="current_workplace" className="w-full border-slate-300 border rounded-md p-2 focus:outline-none transition" value={formData.current_workplace} onChange={handleChange} placeholder="Hospital/Clinic Name" />
+                  <input type="text" name="current_workplace" className={`w-full border rounded-md p-2 focus:outline-none transition ${fieldErrors.current_workplace ? 'border-red-500' : 'border-slate-300'}`} value={formData.current_workplace} onChange={handleChange} placeholder="Hospital/Clinic Name" />
+                  {fieldErrors.current_workplace && <p className="text-red-500 text-xs mt-1">{fieldErrors.current_workplace}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Experience (Years)</label>
-                  <input type="number" name="experience_years" className="w-full border-slate-300 border rounded-md p-2 focus:outline-none transition" value={formData.experience_years} onChange={handleChange} min="0" placeholder="e.g. 5" />
+                  <input type="number" name="experience_years" className={`w-full border rounded-md p-2 focus:outline-none transition ${fieldErrors.experience_years ? 'border-red-500' : 'border-slate-300'}`} value={formData.experience_years} onChange={handleChange} min="0" placeholder="e.g. 5" />
+                  {fieldErrors.experience_years && <p className="text-red-500 text-xs mt-1">{fieldErrors.experience_years}</p>}
                 </div>
               </div>
               <div>

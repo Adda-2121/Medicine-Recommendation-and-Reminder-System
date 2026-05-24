@@ -56,7 +56,7 @@ const Consultation = sequelize.define('Consultation', {
     allowNull: true,
   },
   status: {
-    type: DataTypes.ENUM('pending', 'assigned', 'in_progress', 'waiting_for_results', 'result_ready', 'completed'),
+    type: DataTypes.ENUM('pending', 'assigned', 'in_progress', 'waiting_for_results', 'result_ready', 'prescription_submitted', 'closing_soon', 'completed'),
     defaultValue: 'pending',
   },
   severity_level: {
@@ -87,6 +87,17 @@ const Consultation = sequelize.define('Consultation', {
       model: 'Consultations',
       key: 'id'
     }
+  },
+  // 24-hour closure workflow
+  prescription_submitted_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Timestamp when the final prescription was submitted by the doctor',
+  },
+  closing_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Timestamp when the case will auto-close (prescription_submitted_at + 24h)',
   },
 }, {
   timestamps: true,
