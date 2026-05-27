@@ -56,7 +56,7 @@ const Consultation = sequelize.define('Consultation', {
     allowNull: true,
   },
   status: {
-    type: DataTypes.ENUM('pending', 'assigned', 'in_progress', 'waiting_for_results', 'result_ready', 'prescription_submitted', 'closing_soon', 'completed'),
+    type: DataTypes.ENUM('pending', 'active', 'assigned', 'in_progress', 'waiting_payment', 'waiting_for_results', 'result_ready', 'prescription_submitted', 'closing_soon', 'referred', 'completed', 'archived'),
     defaultValue: 'pending',
   },
   severity_level: {

@@ -33,7 +33,7 @@ const paymentJob = cron.schedule('0 * * * *', async () => {
                     try {
                         await sendSMS(
                             payment.Patient.phone_number,
-                            `Hello ${payment.Patient.name}, your 1-week consultation access has EXPIRED. Please re-subscribe to continue chatting with your doctor.`
+                            `Hello ${payment.Patient.name}, your consultation access has EXPIRED. Please re-subscribe to continue chatting with your doctor.`
                         );
                     } catch (smsError) {
                         console.error(`Failed to send SMS to ${payment.Patient.phone_number}:`, smsError);

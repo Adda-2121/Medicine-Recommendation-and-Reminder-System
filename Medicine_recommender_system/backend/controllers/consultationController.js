@@ -419,36 +419,19 @@ exports.triggerAutoAssignment = async () => {
         requiredSpecialty = GP_SPECIALTY;
       }
 
-      // Find doctors with the required specialty who are available
+      // Find all verified doctors with the required specialty (regardless of availability status)
       let candidates = await User.findAll({
         where: {
           role: 'doctor',
-          specialty: requiredSpecialty,
-          availability_status: 'available',
+          specialty: requiredSpecialty === GP_SPECIALTY
+            ? { [Op.in]: [GP_SPECIALTY, 'General Practice'] }
+            : requiredSpecialty,
           is_verified: true,
         }
       });
 
-      // Fallback 1: any verified doctor with that specialty (regardless of availability_status)
-      if (candidates.length === 0) {
-        candidates = await User.findAll({
-          where: {
-            role: 'doctor',
-            specialty: requiredSpecialty,
-            is_verified: true,
-          }
-        });
-      }
-
-      // Fallback 2 (GP only): any available verified doctor if no GP found
+      // Fallback (GP only): any verified doctor if no specific GP found
       if (candidates.length === 0 && consultation.consultation_type === 'gp') {
-        candidates = await User.findAll({
-          where: { role: 'doctor', availability_status: 'available', is_verified: true }
-        });
-      }
-
-      // Fallback 3: any verified doctor at all
-      if (candidates.length === 0) {
         candidates = await User.findAll({
           where: { role: 'doctor', is_verified: true }
         });
@@ -745,15 +728,22 @@ exports.referToSpecialist = async (req, res) => {
       return res.status(403).json({ message: 'Only doctors can refer patients.' });
     }
 
-    const VALID_SPECIALTIES = [
+    // Only GP doctors can refer patients to specialists
+    const GP_SPECIALTIES = ['General Practitioner', 'General Practice'];
+    if (!GP_SPECIALTIES.includes(req.user.specialty)) {
+      return res.status(403).json({ message: 'Only General Practitioners can refer patients to specialists.' });
+    }
+
+    // Specialist-only targets — GP and lab/radiology roles are not valid referral targets
+    const VALID_SPECIALIST_TARGETS = [
       'Psychiatrist', 'Dermatologist', 'Cardiologist', 'Internal Medicine',
       'Pediatrician', 'Gynecologist', 'Pulmonologist', 'Neurologist', 'Orthopedic'
     ];
 
-    const { target_specialty, referral_notes, urgency } = req.body;
+    const { target_specialty, referral_reason, referral_notes, urgency } = req.body;
 
-    if (!target_specialty || !VALID_SPECIALTIES.includes(target_specialty)) {
-      return res.status(400).json({ message: 'A valid specialist type is required.' });
+    if (!target_specialty || !VALID_SPECIALIST_TARGETS.includes(target_specialty)) {
+      return res.status(400).json({ message: 'A valid specialist type is required. Referrals can only target specialist doctors.' });
     }
 
     const original = await Consultation.findByPk(req.params.id, {
@@ -763,6 +753,19 @@ exports.referToSpecialist = async (req, res) => {
     if (!original) return res.status(404).json({ message: 'Consultation not found.' });
     if (original.doctor_id !== req.user.id) {
       return res.status(403).json({ message: 'Not authorized for this consultation.' });
+    }
+    if (original.consultation_type === 'specialist') {
+      return res.status(400).json({ message: 'Only GP consultations can be referred to a specialist.' });
+    }
+    if (!original.Payment || original.Payment.status !== 'verified') {
+      return res.status(400).json({ message: 'Patient must complete GP consultation payment before referral.' });
+    }
+    if (original.status === 'referred' || original.status === 'archived') {
+      return res.status(400).json({ message: 'This consultation has already been referred.' });
+    }
+    const existingReferral = await Referral.findOne({ where: { gp_consultation_id: original.id } });
+    if (existingReferral) {
+      return res.status(400).json({ message: 'A referral already exists for this GP consultation.' });
     }
 
     // Resolve priority based on urgency
@@ -774,15 +777,14 @@ exports.referToSpecialist = async (req, res) => {
     };
     const resolvedPriority = urgencyPriorityMap[urgencyLower] || 'low';
 
-    // ── Payment Discount Logic ────────────────────────────────────────────────
-    // Get the standard fee for this specialist type
+    // Full specialist consultation fee (no discount on referral)
     const standardFee = await resolveConsultationFee('specialist', target_specialty);
-    // 20% Referral Discount
-    const discountAmount = standardFee * 0.20;
-    const remainingPayment = standardFee - discountAmount;
+    const discountAmount = 0;
+    const remainingPayment = standardFee;
 
     // ── System Automatic Specialist Assignment ────────────────────────────────
-    // Finds verified specialists of the matching target specialty, prioritizing availability and least workload
+    // Finds all verified specialists of the matching specialty, sorted by least workload.
+    // Availability status is used for ordering only — all verified specialists are eligible.
     let candidates = await User.findAll({
       where: {
         role: 'doctor',
@@ -823,7 +825,8 @@ exports.referToSpecialist = async (req, res) => {
       gp_id: req.user.id,
       specialist_id: assignedSpecialist ? assignedSpecialist.id : null,
       specialty: target_specialty,
-      referral_note: referral_notes || 'No notes provided by GP.',
+      referral_reason: referral_reason || null,
+      referral_note: referral_notes || referral_reason || 'No notes provided by GP.',
       urgency: urgencyLower,
       status: 'pending_payment',
       priority: resolvedPriority,
@@ -832,18 +835,26 @@ exports.referToSpecialist = async (req, res) => {
     });
 
     // ── Create Specialist Consultation ────────────────────────────────────────
+    const isTargetGP = target_specialty === 'General Practitioner' || target_specialty === 'General Practice';
+    
     const specialistConsultation = await Consultation.create({
       patient_id: original.patient_id,
       doctor_id: assignedSpecialist ? assignedSpecialist.id : null,
       symptoms_description: referral_notes || original.symptoms_description,
       reason: `Referred by GP for ${target_specialty}`,
-      status: 'pending',
+      status: 'waiting_payment', // Specialist starts in waiting_payment
       severity_level: resolvedPriority,
       queue_status: assignedSpecialist ? 'assigned' : 'waiting',
-      consultation_type: 'specialist',
+      consultation_type: isTargetGP ? 'gp' : 'specialist',
       target_specialty,
       referred_by_id: original.id,
     });
+
+    // Mark original GP consultation as referred — close immediately, clear any timer
+    original.status = 'referred';
+    original.closing_at = null;
+    original.prescription_submitted_at = null;
+    await original.save();
 
     // Link the specialist consultation back to the referral record
     referralRecord.specialist_consultation_id = specialistConsultation.id;
@@ -863,13 +874,20 @@ exports.referToSpecialist = async (req, res) => {
     });
 
     // ── Notification Dispatch ────────────────────────────────────────────────
-    // Notify Patient
     await sendPushNotification(
       original.patient_id,
-      'New Referral: Pending Payment',
-      `Your GP referred you to a ${target_specialty} (Dr. ${assignedSpecialist ? assignedSpecialist.name : 'TBD'}). Remaining payment: ${remainingPayment} ETB.`,
+      'Referral Created',
+      `Your GP referred you to ${target_specialty}. Please complete specialist payment to continue.`,
       'referral',
-      '/consultations'
+      `/consultations?id=${specialistConsultation.id}`
+    );
+
+    await sendPushNotification(
+      original.patient_id,
+      'Specialist Payment Required',
+      `Pay the full ${target_specialty} consultation fee to unlock your specialist chat.`,
+      'referral_payment',
+      `/consultations?id=${specialistConsultation.id}`
     );
 
     // Notify Specialist (if assigned)
@@ -881,6 +899,22 @@ exports.referToSpecialist = async (req, res) => {
         'referral',
         '/consultations'
       );
+    }
+
+    if (global.io) {
+      // Notify patient to redirect to specialist consultation
+      global.io.to(`user_${original.patient_id}`).emit('consultation_referred', { 
+        old_consultation_id: original.id, 
+        new_consultation_id: specialistConsultation.id,
+        specialty: target_specialty
+      });
+      // Notify GP that their session is now closed
+      global.io.to(original.id).emit('case_status_updated', {
+        consultation_id: original.id,
+        status: 'referred',
+        message: 'This consultation has been referred to a specialist. The GP session is now closed.'
+      });
+      global.io.emit('queue_update');
     }
 
     res.status(201).json({
@@ -926,6 +960,18 @@ exports.getReferralDetails = async (req, res) => {
       return res.status(404).json({ message: 'Referral details not found for this consultation.' });
     }
 
+    if (req.user.role === 'patient' && referral.patient_id !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized for this referral.' });
+    }
+    if (req.user.role === 'doctor') {
+      const allowed =
+        referral.gp_id === req.user.id ||
+        referral.specialist_id === req.user.id;
+      if (!allowed) {
+        return res.status(403).json({ message: 'Not authorized for this referral.' });
+      }
+    }
+
     // Get any service requests (labs/radiology results) associated with the GP consultation
     const serviceRequests = await ServiceRequest.findAll({
       where: { consultation_id: referral.gp_consultation_id },
@@ -941,3 +987,125 @@ exports.getReferralDetails = async (req, res) => {
     res.status(500).json({ message: 'Server error retrieving referral details.' });
   }
 };
+
+/**
+ * Activate a specialist consultation after payment is verified.
+ * This function is called by the payment controllers.
+ */
+exports.activateSpecialistConsultation = async (consultationId) => {
+  try {
+    const consultation = await Consultation.findByPk(consultationId, {
+      include: [
+        { model: User, as: 'Patient' },
+        { model: User, as: 'Doctor' },
+      ],
+    });
+
+    if (!consultation || consultation.consultation_type !== 'specialist') return;
+
+    consultation.status = 'in_progress';
+    consultation.queue_status = 'assigned';
+    await consultation.save();
+
+    const referral = await Referral.findOne({
+      where: { specialist_consultation_id: consultationId },
+      include: [{ model: User, as: 'Specialist', attributes: ['id', 'name', 'specialty', 'room_number'] }],
+    });
+
+    if (referral) {
+      referral.status = 'in_progress';
+      await referral.save();
+
+      const gpConsult = await Consultation.findByPk(referral.gp_consultation_id);
+      if (gpConsult && gpConsult.status === 'referred') {
+        gpConsult.status = 'archived';
+        await gpConsult.save();
+      }
+    }
+
+    const specialistName = consultation.Doctor?.name || referral?.Specialist?.name || 'your specialist';
+
+    await sendPushNotification(
+      consultation.patient_id,
+      'Payment Successful',
+      'Your specialist consultation payment was confirmed.',
+      'payment',
+      `/consultations?id=${consultationId}`
+    );
+
+    await sendPushNotification(
+      consultation.patient_id,
+      'Specialist Assigned',
+      `You are now connected with Dr. ${specialistName} (${consultation.target_specialty || 'Specialist'}).`,
+      'referral',
+      `/consultations?id=${consultationId}`
+    );
+
+    await sendPushNotification(
+      consultation.patient_id,
+      'Specialist Consultation Activated',
+      'Your specialist chat is now open. The GP chat has been closed.',
+      'consultation_activated',
+      `/consultations?id=${consultationId}`
+    );
+
+    if (referral?.specialist_id) {
+      await sendPushNotification(
+        referral.specialist_id,
+        'Referral Case Active',
+        'Patient payment received. You can now chat with the referred patient.',
+        'referral',
+        `/consultations?id=${consultationId}`
+      );
+    }
+
+    if (global.io) {
+      global.io.to(`user_${consultation.patient_id}`).emit('payment_success_redirect', {
+        consultation_id: consultationId,
+        new_consultation_id: consultationId,
+        gp_consultation_id: referral?.gp_consultation_id,
+        message: 'Payment successful! Opening your specialist consultation.',
+      });
+      global.io.emit('queue_update');
+    }
+
+    console.log(`Activated specialist consultation: ${consultationId}`);
+  } catch (error) {
+    console.error('Error activating specialist consultation:', error);
+  }
+};
+
+// @desc    Active referrals for logged-in patient (dashboard)
+// @route   GET /api/consultations/my-referrals
+// @access  Private (Patient)
+exports.getPatientReferrals = async (req, res) => {
+  try {
+    if (req.user.role !== 'patient') {
+      return res.status(403).json({ message: 'Only patients can access referral summary.' });
+    }
+
+    const referrals = await Referral.findAll({
+      where: {
+        patient_id: req.user.id,
+        status: { [Op.in]: ['pending_payment', 'assigned', 'in_progress'] },
+      },
+      include: [
+        { model: User, as: 'GP', attributes: ['id', 'name', 'specialty'] },
+        { model: User, as: 'Specialist', attributes: ['id', 'name', 'specialty', 'room_number', 'work_location'] },
+        {
+          model: Consultation,
+          as: 'SpecialistConsultation',
+          attributes: ['id', 'status', 'target_specialty', 'consultation_type'],
+          include: [{ model: Payment, as: 'Payment' }],
+        },
+      ],
+      order: [['created_at', 'DESC']],
+    });
+
+    res.status(200).json(referrals);
+  } catch (error) {
+    console.error('Get patient referrals error:', error);
+    res.status(500).json({ message: 'Server error fetching referrals.' });
+  }
+};
+

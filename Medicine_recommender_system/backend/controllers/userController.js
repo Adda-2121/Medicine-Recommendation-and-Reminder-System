@@ -3,7 +3,6 @@ const { Op } = require('sequelize');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
-const validateEmail = require('../utils/validateEmail');
 const sendEmail = require('../utils/sendEmail');
 
 
@@ -42,30 +41,20 @@ exports.getVerifiedDoctors = async (req, res) => {
       role: 'doctor',
       is_verified: true
     };
-    
-    if (specialty) {
-      whereClause.specialty = specialty;
-    }
 
-    const today = new Date();
-    today.setHours(0,0,0,0);
+    if (specialty) {
+      // Flexible matching: "General Practice" vs "General Practitioner"
+      if (specialty === 'General Practitioner' || specialty === 'General Practice') {
+        whereClause.specialty = { [Op.in]: ['General Practitioner', 'General Practice'] };
+      } else {
+        whereClause.specialty = specialty;
+      }
+    }
 
     const doctors = await User.findAll({
       where: whereClause,
       attributes: ['id', 'name', 'specialty', 'experience_years', 'is_verified', 'availability_status'],
       include: [
-        {
-          model: Availability,
-          as: 'Availabilities',
-          where: {
-            is_booked: false,
-            date: {
-              [Op.gte]: today
-            }
-          },
-          required: false,
-          attributes: ['id']
-        },
         {
           model: Testimonial,
           as: 'ReceivedTestimonials',
@@ -102,26 +91,15 @@ exports.getVerifiedDoctors = async (req, res) => {
         }
       });
 
-      // Estimated wait: 15 mins per active patient ahead
-      const estimatedWaitMins = activeQueueCount * 15;
-
       delete docJSON.ReceivedTestimonials;
       docJSON.averageRating = Number(averageRating);
       docJSON.totalReviews = totalReviews;
       docJSON.activeQueueCount = activeQueueCount;
       docJSON.waitingCount = waitingCount;
-      docJSON.estimatedWaitMins = estimatedWaitMins;
       return docJSON;
     }));
 
-    // Sort: available first, then busy, then offline
-    const statusOrder = { available: 0, busy: 1, offline: 2 };
-    doctorsWithRatings.sort((a, b) => {
-      const sa = statusOrder[a.availability_status] ?? 3;
-      const sb = statusOrder[b.availability_status] ?? 3;
-      if (sa !== sb) return sa - sb;
-      return a.activeQueueCount - b.activeQueueCount; // within same status, least busy first
-    });
+
 
     res.status(200).json(doctorsWithRatings);
   } catch (error) {
@@ -133,18 +111,59 @@ exports.getVerifiedDoctors = async (req, res) => {
 // @desc    Create a new user (Doctor/Admin etc)
 // @route   POST /api/users
 // @access  Private (Admin)
+const resolveFullName = (body) => {
+  const { name, first_name, last_name } = body;
+  if (first_name !== undefined || last_name !== undefined) {
+    const first = (first_name || '').trim();
+    const last = (last_name || '').trim();
+    if (!first || first.length < 2) {
+      return { error: 'First name must be at least 2 characters long.' };
+    }
+    if (!last || last.length < 2) {
+      return { error: 'Last name must be at least 2 characters long.' };
+    }
+    if (/\d/.test(first) || /\d/.test(last)) {
+      return { error: 'Name cannot contain numbers.' };
+    }
+    if (!/^[a-zA-Z\u1200-\u137F]+$/.test(first) || !/^[a-zA-Z\u1200-\u137F]+$/.test(last)) {
+      return { error: 'Name can only contain letters.' };
+    }
+    return { name: `${first} ${last}` };
+  }
+  const full = (name || '').trim();
+  if (!full || full.length < 2) {
+    return { error: 'please wright your full name' };
+  }
+  if (/\d/.test(full)) {
+    return { error: 'Name cannot contain numbers.' };
+  }
+  return { name: full };
+};
+
 exports.createUser = async (req, res) => {
   try {
-    const { name, email, password, role, specialty, license_number, experience_years, lab_categories, work_location } = req.body;
+    const { email, password, role, specialty, license_number, experience_years, lab_categories, work_location } = req.body;
 
-    const emailCheck = await validateEmail(email);
-    if (!emailCheck.valid) {
-      return res.status(400).json({ message: emailCheck.reason });
+    const nameResult = resolveFullName(req.body);
+    if (nameResult.error) {
+      return res.status(400).json({ message: nameResult.error });
+    }
+    const name = nameResult.name;
+
+    // Validation: Email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (!email || !emailRegex.test(email.toLowerCase().trim())) {
+      return res.status(400).json({ message: 'Please enter a valid email address.' });
     }
 
-    const existingUser = await User.findOne({ where: { email } });
+    const existingUser = await User.findOne({ where: { email: email.toLowerCase().trim() } });
     if (existingUser) {
       return res.status(400).json({ message: 'User already exists' });
+    }
+
+    // Validation: Password
+    if (!password || password.length < 8) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters long.' });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -158,17 +177,20 @@ exports.createUser = async (req, res) => {
     }
 
     const userPayload = {
-      name,
-      email,
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
       password: hashedPassword,
       role: role || 'patient',
     };
 
     if (role === 'doctor') {
-      userPayload.specialty = specialty;
-      userPayload.license_number = license_number;
-      userPayload.experience_years = experience_years;
-      userPayload.is_verified = false; // Requires explicit admin verification later
+      if (!specialty || specialty.trim().length === 0) {
+        return res.status(400).json({ message: 'Specialty is required for doctors.' });
+      }
+      userPayload.specialty = specialty.trim();
+      userPayload.license_number = license_number ? license_number.trim() : null;
+      userPayload.experience_years = experience_years ? parseInt(experience_years) : null;
+      userPayload.is_verified = false;
     }
 
     if (role === 'laboratorist' || role === 'radiologist') {
@@ -205,73 +227,95 @@ exports.verifyDoctor = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    if (user.role !== 'doctor') {
-      return res.status(400).json({ message: 'Only doctors can be verified' });
+    const verifiedRoles = ['doctor', 'laboratorist', 'radiologist'];
+    if (!verifiedRoles.includes(user.role)) {
+      return res.status(400).json({ message: `Verification not required for role: ${user.role}` });
     }
 
     const { status, rejection_reason } = req.body;
-    
+
     if (!['pending', 'verified', 'rejected', 'suspended'].includes(status)) {
-       return res.status(400).json({ message: 'Invalid status' });
+      return res.status(400).json({ message: 'Invalid status' });
     }
 
     user.verification_status = status;
     user.is_verified = status === 'verified';
-    
+
     if (status === 'rejected' || status === 'suspended') {
-        user.rejection_reason = rejection_reason || null;
+      user.rejection_reason = rejection_reason || null;
     } else {
-        user.rejection_reason = null;
+      user.rejection_reason = null;
     }
 
     await user.save();
 
-    // Send email notification to doctor based on status
+    // 1. Send Email Notification
     try {
-      let subject, message;
+      let subject, message, pushTitle, pushBody;
       const appName = process.env.FROM_NAME || 'HealthConnect';
       const supportEmail = process.env.FROM_EMAIL || 'support@healthconnect.com';
+      const roleName = user.role.charAt(0).toUpperCase() + user.role.slice(1);
 
       if (status === 'verified') {
         subject = `${appName} — Your Account Has Been Approved!`;
+        pushTitle = 'Account Approved! 🎉';
+        pushBody = `Your ${user.role} account has been verified. You can now start using the platform.`;
         message =
-          `Dear Dr. ${user.name},\n\n` +
-          `Great news! Your doctor account on ${appName} has been reviewed and approved by our admin team.\n\n` +
-          `You can now log in and start accepting patient consultations.\n\n` +
-          `Login at: ${process.env.FRONTEND_URL || 'http://localhost:3000'}/login\n\n` +
+          `Dear ${roleName} ${user.name},\n\n` +
+          `Great news! Your account on ${appName} has been reviewed and approved by our admin team.\n\n` +
+          `You can now log in and start providing professional services.\n\n` +
+          `Login at: ${process.env.FRONTEND_URL || 'http://localhost:5173'}/login\n\n` +
           `If you have any questions, please contact us at ${supportEmail}.\n\n` +
           `Welcome aboard,\nThe ${appName} Team`;
       } else if (status === 'rejected') {
         subject = `${appName} — Application Update`;
+        pushTitle = 'Application Update';
+        pushBody = `Your application has been rejected. Check your email for details.`;
         message =
-          `Dear Dr. ${user.name},\n\n` +
+          `Dear ${roleName} ${user.name},\n\n` +
           `We have reviewed your application and unfortunately we are unable to approve it at this time.\n\n` +
           (rejection_reason ? `Reason: ${rejection_reason}\n\n` : '') +
           `If you believe this is an error or would like to reapply with updated documents, please contact us at ${supportEmail}.\n\n` +
           `Regards,\nThe ${appName} Team`;
       } else if (status === 'suspended') {
         subject = `${appName} — Account Suspended`;
+        pushTitle = 'Account Suspended ⚠️';
+        pushBody = `Your account has been suspended by the admin.`;
         message =
-          `Dear Dr. ${user.name},\n\n` +
+          `Dear ${roleName} ${user.name},\n\n` +
           `Your account on ${appName} has been suspended.\n\n` +
           (rejection_reason ? `Reason: ${rejection_reason}\n\n` : '') +
           `Please contact us at ${supportEmail} if you have questions or wish to appeal this decision.\n\n` +
           `Regards,\nThe ${appName} Team`;
       } else if (status === 'pending') {
         subject = `${appName} — Application Under Review`;
+        pushTitle = 'Application Under Review';
+        pushBody = 'Your documents are being reviewed by our team.';
         message =
-          `Dear Dr. ${user.name},\n\n` +
+          `Dear ${roleName} ${user.name},\n\n` +
           `Your application is currently under review by our admin team. We will notify you once a decision has been made.\n\n` +
           `If you have any questions, please contact us at ${supportEmail}.\n\n` +
           `Regards,\nThe ${appName} Team`;
       }
 
+      // Execute Email Send
       if (subject && message) {
         await sendEmail({ email: user.email, subject, message });
       }
-    } catch (emailErr) {
-      // Don't fail the request if email sending fails — just log it
-      console.error('[verifyDoctor] Failed to send notification email:', emailErr.message);
+
+      // 2. Send Push Notification
+      if (pushTitle && pushBody) {
+        const { sendPushNotification } = require('../utils/pushHelper');
+        await sendPushNotification(
+          user.id,
+          pushTitle,
+          pushBody,
+          'account_status',
+          '/profile'
+        );
+      }
+    } catch (notifErr) {
+      console.error('[verifyDoctor] Notification failed:', notifErr.message);
     }
 
     res.status(200).json({
@@ -398,11 +442,19 @@ exports.updateUser = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     const {
-      name, email, specialty, license_number, experience_years,
+      name, first_name, last_name, email, specialty, license_number, experience_years,
       work_location, specializations, current_workplace
     } = req.body;
 
-    if (name !== undefined) user.name = name;
+    if (first_name !== undefined || last_name !== undefined) {
+      const nameResult = resolveFullName(req.body);
+      if (nameResult.error) {
+        return res.status(400).json({ message: nameResult.error });
+      }
+      user.name = nameResult.name;
+    } else if (name !== undefined) {
+      user.name = name.trim();
+    }
     if (specialty !== undefined) user.specialty = specialty;
     if (license_number !== undefined) user.license_number = license_number;
     if (experience_years !== undefined) user.experience_years = experience_years;
@@ -446,9 +498,8 @@ exports.getAvailabilityStatus = async (req, res) => {
     let computedStatus;
     if (!user.is_verified) {
       computedStatus = 'offline';
-    } else if (activeCount > 0) {
-      computedStatus = 'busy';
     } else {
+      // "Remove availability restricted logic" — doctors are always available if verified
       computedStatus = 'available';
     }
 

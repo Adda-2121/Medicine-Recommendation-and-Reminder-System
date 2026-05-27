@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const app = require('./app');
 const { sequelize, ChatMessage, Consultation, User } = require('./models');
 const { sendPushNotification } = require('./utils/pushHelper');
+const { assertConsultationAccess, isChatWritable } = require('./utils/consultationAccess');
 
 const PORT = process.env.PORT || 5000;
 
@@ -40,6 +41,35 @@ io.on('connection', (socket) => {
   // Handle incoming chat messages
   socket.on('send_message', async (data) => {
     try {
+      const sender = await User.findByPk(data.sender_id);
+      if (!sender) {
+        socket.emit('error_message', { message: 'Sender not found.' });
+        return;
+      }
+
+      const access = await assertConsultationAccess(sender, data.consultation_id);
+      if (!access.ok) {
+        socket.emit('error_message', { message: access.message });
+        return;
+      }
+
+      const consultationCheck = access.consultation;
+      if (!isChatWritable(consultationCheck)) {
+        const closedMsg = consultationCheck.status === 'referred'
+          ? 'This GP consultation was referred to a specialist. Chat is read-only.'
+          : consultationCheck.status === 'waiting_payment'
+            ? 'Specialist payment is required before you can send messages.'
+            : 'This consultation is closed. No further messages can be sent.';
+        socket.emit('error_message', { message: closedMsg });
+        return;
+      }
+
+      // GP who referred cannot message on the original case (status=referred)
+      if (sender.role === 'doctor' && consultationCheck.status === 'referred') {
+        socket.emit('error_message', { message: 'GP chat is closed after referral.' });
+        return;
+      }
+
       // Validate payment status before sending a message
       const { Payment } = require('./models');
       const payment = await Payment.findOne({ where: { consultation_id: data.consultation_id } });
@@ -49,11 +79,12 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // Guard: block messaging on closed/completed cases
-      const consultationCheck = await Consultation.findByPk(data.consultation_id, { attributes: ['status'] });
-      if (consultationCheck && consultationCheck.status === 'completed') {
-        socket.emit('error_message', { message: 'This case is closed. No further messages can be sent.' });
-        return;
+      // Guard: block unverified professionals from messaging
+      if (sender && ['doctor', 'laboratorist', 'radiologist'].includes(sender.role)) {
+        if (sender.verification_status !== 'verified') {
+          socket.emit('error_message', { message: 'Your account is not verified. Messaging restricted.' });
+          return;
+        }
       }
 
       // data expects: { consultation_id, sender_id, message, attachment_url, chat_type }
@@ -88,6 +119,34 @@ io.on('connection', (socket) => {
   });
 
   // Handle message deletion logic
+  // Mark incoming messages as seen when recipient is viewing the chat
+  socket.on('mark_messages_seen', async (data) => {
+    try {
+      const { consultation_id, viewer_id, chat_type } = data;
+      if (!consultation_id || !viewer_id) return;
+
+      const viewer = await User.findByPk(viewer_id);
+      if (!viewer) return;
+
+      const access = await assertConsultationAccess(viewer, consultation_id);
+      if (!access.ok) return;
+
+      const { markMessagesAsRead } = require('./controllers/chatController');
+      const result = await markMessagesAsRead(consultation_id, viewer_id, chat_type || null);
+
+      if (result) {
+        io.to(consultation_id).emit('messages_seen', {
+          consultation_id,
+          chat_type: chat_type || null,
+          message_ids: result.message_ids,
+          read_at: result.read_at,
+        });
+      }
+    } catch (error) {
+      console.error('Socket mark messages seen error:', error);
+    }
+  });
+
   socket.on('delete_messages', async (data) => {
     try {
       // data expects: { consultation_id, message_ids: [], mode: 'me' | 'everyone', requester_id, requester_role }
@@ -170,9 +229,13 @@ sequelize.authenticate()
       console.log('Ensure chat_type enum exists in ChatMessages');
 
       // ── Consultation status: add new lifecycle values ──────────────────────
+      await sequelize.query(`ALTER TYPE "enum_Consultations_status" ADD VALUE IF NOT EXISTS 'active';`).catch(() => {});
+      await sequelize.query(`ALTER TYPE "enum_Consultations_status" ADD VALUE IF NOT EXISTS 'referred';`).catch(() => {});
+      await sequelize.query(`ALTER TYPE "enum_Consultations_status" ADD VALUE IF NOT EXISTS 'waiting_payment';`).catch(() => {});
+      await sequelize.query(`ALTER TYPE "enum_Consultations_status" ADD VALUE IF NOT EXISTS 'archived';`).catch(() => {});
       await sequelize.query(`ALTER TYPE "enum_Consultations_status" ADD VALUE IF NOT EXISTS 'prescription_submitted';`).catch(() => {});
       await sequelize.query(`ALTER TYPE "enum_Consultations_status" ADD VALUE IF NOT EXISTS 'closing_soon';`).catch(() => {});
-      console.log('Ensure prescription_submitted and closing_soon exist in Consultations status ENUM');
+      console.log('Ensure new professional statuses exist in Consultations status ENUM');
 
       // ── Prescriptions table: add new columns if they don't exist ──────────
       // Make drug_id nullable (for counseling-only entries)
@@ -189,7 +252,22 @@ sequelize.authenticate()
       // Add prescription_submitted_at and closing_at to Consultations
       await sequelize.query(`ALTER TABLE "Consultations" ADD COLUMN IF NOT EXISTS "prescription_submitted_at" TIMESTAMP WITH TIME ZONE;`).catch(() => {});
       await sequelize.query(`ALTER TABLE "Consultations" ADD COLUMN IF NOT EXISTS "closing_at" TIMESTAMP WITH TIME ZONE;`).catch(() => {});
+      await sequelize.query(`ALTER TABLE "Referrals" ADD COLUMN IF NOT EXISTS "referral_reason" VARCHAR(500);`).catch(() => {});
+      await sequelize.query(`ALTER TABLE "ChatMessages" ADD COLUMN IF NOT EXISTS "read_at" TIMESTAMP WITH TIME ZONE;`).catch(() => {});
       console.log('Prescriptions and Consultations schema migrations applied');
+
+      // ── ServiceRequests: queue management columns ─────────────────────────
+      await sequelize.query(`ALTER TABLE "ServiceRequests" ADD COLUMN IF NOT EXISTS "queue_number" INTEGER;`).catch(() => {});
+      await sequelize.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_ServiceRequests_queue_status') THEN
+            CREATE TYPE "enum_ServiceRequests_queue_status" AS ENUM ('waiting', 'active', 'completed');
+          END IF;
+        END $$;
+      `).catch(() => {});
+      await sequelize.query(`ALTER TABLE "ServiceRequests" ADD COLUMN IF NOT EXISTS "queue_status" "enum_ServiceRequests_queue_status" DEFAULT 'waiting';`).catch(() => {});
+      console.log('ServiceRequests queue columns ensured');
+
     } catch (err) {
       // Ignore if type doesn't exist yet (first run) or other error
       console.error('Enum alteration error:', err.message);
@@ -206,8 +284,8 @@ sequelize.authenticate()
       console.error('Error seeding settings:', err.message);
     }
     
-    // Sync models (creates tables if they don't exist)
-    return sequelize.sync({ alter: true }); 
+    // Sync models (creates tables if they don't exist, does NOT alter existing columns)
+    return sequelize.sync();
   })
   .then(async () => {
     const drugController = require('./controllers/drugController');

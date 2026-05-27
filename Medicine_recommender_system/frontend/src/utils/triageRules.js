@@ -33,9 +33,9 @@ export const TRIAGE_REASONS = [
     label: 'Heart / chest issues',
     emoji: '❤️',
     description: 'Chest pain, palpitations, shortness of breath',
-    doctorType: 'gp',
-    specialty: null,
-    routingNote: 'Chest and heart symptoms require an initial GP assessment for safety.',
+    doctorType: 'specialist',
+    specialty: 'Cardiologist',
+    routingNote: 'Heart and chest symptoms are best evaluated by a Cardiologist.',
   },
   {
     key: 'general_illness',
@@ -97,7 +97,7 @@ export const TRIAGE_REASONS = [
     emoji: '❓',
     description: 'Unsure about symptoms, or something not listed above',
     doctorType: 'gp',
-    specialty: null,
+    specialty: 'General Practitioner',
     routingNote: 'A General Practitioner will assess your condition and refer you if needed.',
   },
 ];
@@ -111,7 +111,7 @@ export function triageRoute(reasonKey) {
   const rule = TRIAGE_REASONS.find(r => r.key === reasonKey);
   if (!rule) {
     // Unknown key → GP fallback
-    return { doctorType: 'gp', specialty: null, routingNote: 'A General Practitioner will assess your condition.' };
+    return { doctorType: 'gp', specialty: 'General Practitioner', routingNote: 'A General Practitioner will assess your condition.' };
   }
   return {
     doctorType: rule.doctorType,

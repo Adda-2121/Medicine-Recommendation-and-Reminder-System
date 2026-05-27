@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { getChatHistory, uploadAttachment } = require('../controllers/chatController');
-const { protect } = require('../middlewares/authMiddleware');
+const { getChatHistory, uploadAttachment, markMessagesSeen } = require('../controllers/chatController');
+const { protect, verifiedProfessional } = require('../middlewares/authMiddleware');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -23,7 +23,8 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+router.post('/:consultationId/seen', protect, markMessagesSeen);
 router.get('/:consultationId', protect, getChatHistory);
-router.post('/upload', protect, upload.single('file'), uploadAttachment);
+router.post('/upload', protect, verifiedProfessional, upload.single('file'), uploadAttachment);
 
 module.exports = router;

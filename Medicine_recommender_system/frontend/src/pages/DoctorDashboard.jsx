@@ -7,8 +7,6 @@ import {
   MessageSquare, 
   Clock, 
   CheckCircle,
-  UserCircle,
-  Bell,
   Calendar,
   Plus,
   Trash2,
@@ -18,11 +16,13 @@ import {
   AlertTriangle,
   XCircle,
   ShieldCheck,
-  Loader2
+  Loader2,
+  UserRoundPlus
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import { availabilitySlotSchema, referralSchema, formatZodErrors } from '../utils/validationSchemas';
+import { REFERRAL_SPECIALIST_TYPES, getReferEligibility } from '../utils/referralHelpers';
 
 const DoctorDashboard = () => {
   const { user } = useContext(AuthContext);
@@ -130,12 +130,8 @@ const DoctorDashboard = () => {
   };
 
   // ── Referral state ────────────────────────────────────────────────────────
-  const SPECIALIST_TYPES = [
-    'Psychiatrist', 'Dermatologist', 'Cardiologist', 'Internal Medicine',
-    'Pediatrician', 'Gynecologist', 'Pulmonologist', 'Neurologist', 'Orthopedic'
-  ];
   const [referralModal, setReferralModal] = useState({ isOpen: false, consultationId: null });
-  const [referralForm, setReferralForm] = useState({ target_specialty: '', referral_notes: '', urgency: 'routine' });
+  const [referralForm, setReferralForm] = useState({ target_specialty: '', referral_reason: '', referral_notes: '', urgency: 'routine' });
   const [referralLoading, setReferralLoading] = useState(false);
   const [referralFieldErrors, setReferralFieldErrors] = useState({});
 
@@ -154,7 +150,7 @@ const DoctorDashboard = () => {
       await api.post(`/consultations/${referralModal.consultationId}/refer`, referralForm);
       toast.success(`Patient referred to ${referralForm.target_specialty} successfully.`);
       setReferralModal({ isOpen: false, consultationId: null });
-      setReferralForm({ target_specialty: '', referral_notes: '', urgency: 'routine' });
+      setReferralForm({ target_specialty: '', referral_reason: '', referral_notes: '', urgency: 'routine' });
       setReferralFieldErrors({});
       fetchConsultations();
     } catch (err) {
@@ -197,16 +193,6 @@ const DoctorDashboard = () => {
         <div>
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Dr. {user?.name || 'Doctor'}</h1>
           <p className="text-slate-500 mt-1 text-sm md:text-base">Your clinical overview and active cases.</p>
-        </div>
-
-        <div className="flex items-center space-x-4">
-          <button className="p-2 text-slate-400 hover:text-primary-600 bg-white rounded-full border border-slate-200 shadow-sm relative transition-colors">
-            <Bell size={20} />
-          </button>
-          <div className="flex items-center space-x-2 bg-white px-3 py-1.5 rounded-full border border-slate-200 shadow-sm cursor-pointer hover:bg-slate-50 transition">
-            <UserCircle size={24} className="text-slate-400" />
-            <span className="font-medium text-sm text-slate-700 hidden sm:block">Profile</span>
-          </div>
         </div>
       </div>
 
@@ -323,8 +309,7 @@ const DoctorDashboard = () => {
                 </div>
                 
                 {consultations.filter(c =>
-                    c.status === 'assigned' ||
-                    c.status === 'in_progress' ||
+                    ['assigned', 'in_progress', 'active', 'prescription_submitted', 'closing_soon', 'result_ready', 'waiting_for_results'].includes(c.status) ||
                     (c.status === 'completed' && reviewsData.testimonials.some(t => t.patient_id === c.patient_id))
                   ).length === 0 ? (
                   <div className="p-12 text-center text-slate-500">
@@ -346,9 +331,10 @@ const DoctorDashboard = () => {
                       <tbody className="bg-white divide-y divide-slate-100">
                         {consultations
                           .filter(c => {
-                            if (c.status === 'assigned' || c.status === 'in_progress') return true;
+                            if (['assigned', 'in_progress', 'active', 'prescription_submitted', 'closing_soon', 'result_ready', 'waiting_for_results'].includes(c.status)) {
+                              return true;
+                            }
                             if (c.status === 'completed') {
-                              // Show completed only if the patient left a review for this doctor
                               return reviewsData.testimonials.some(t => t.patient_id === c.patient_id);
                             }
                             return false;
@@ -398,15 +384,23 @@ const DoctorDashboard = () => {
                                     <Activity size={13} className="mr-1" /> Resume Case
                                   </button>
                                 )}
-                                {/* Refer to Specialist — only for GP doctors on active consultations */}
-                                {(c.status === 'in_progress' || c.status === 'assigned') && user?.specialty === 'General Practitioner' && (
-                                  <button
-                                    onClick={() => setReferralModal({ isOpen: true, consultationId: c.id })}
-                                    className="bg-violet-50 border border-violet-200 text-violet-700 hover:bg-violet-100 px-3 py-1.5 rounded-md transition-all shadow-sm text-xs font-bold flex items-center"
-                                  >
-                                    <ClipboardList size={13} className="mr-1" /> Refer
-                                  </button>
-                                )}
+                                {(() => {
+                                  const ref = getReferEligibility(c, user);
+                                  if (!ref.showButton) return null;
+                                  return (
+                                    <button
+                                      onClick={() => ref.canSubmit && setReferralModal({ isOpen: true, consultationId: c.id })}
+                                      disabled={!ref.canSubmit}
+                                      className={`px-3 py-1.5 rounded-md transition-all shadow-sm text-xs font-bold flex items-center border
+                                        ${ref.canSubmit
+                                          ? 'bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-100'
+                                          : 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed'}`}
+                                      title={ref.canSubmit ? 'Refer when the case is beyond your scope' : ref.reason}
+                                    >
+                                      <UserRoundPlus size={13} className="mr-1" /> Refer to Specialist
+                                    </button>
+                                  );
+                                })()}
                                 {(c.status === 'in_progress' || c.status === 'assigned') && (
                                   <button 
                                     onClick={() => navigate(`/consultations?id=${c.id}`)}
@@ -656,13 +650,14 @@ const DoctorDashboard = () => {
             <div className="px-6 pt-6 pb-4 border-b border-slate-200 flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold text-slate-900">Refer Patient to Specialist</h3>
-                <p className="text-xs text-slate-500 mt-0.5">A new specialist consultation will be created for this patient.</p>
+                <p className="text-xs text-slate-500 mt-0.5">GP referral only — select a specialist doctor. Lab and radiology services are not handled here.</p>
               </div>
               <button onClick={() => setReferralModal({ isOpen: false, consultationId: null })} className="text-slate-400 hover:text-slate-600 text-xl font-bold leading-none">&times;</button>
             </div>
             <form onSubmit={handleReferSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Specialist Type <span className="text-red-500">*</span></label>
+                <p className="text-xs text-slate-400 mb-1.5">Only specialist doctors are listed. GP, laboratorist, and radiologist are excluded.</p>
                 <select
                   required
                   value={referralForm.target_specialty}
@@ -670,7 +665,7 @@ const DoctorDashboard = () => {
                   className={`w-full px-3 py-2.5 border ${referralFieldErrors.target_specialty ? 'border-red-500 bg-red-50' : 'border-slate-300 bg-white'} rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400`}
                 >
                   <option value="" disabled>Select specialist type…</option>
-                  {SPECIALIST_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
+                  {REFERRAL_SPECIALIST_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
                 {referralFieldErrors.target_specialty && <p className="text-red-500 text-xs mt-1">{referralFieldErrors.target_specialty}</p>}
               </div>
@@ -689,7 +684,19 @@ const DoctorDashboard = () => {
                 {referralFieldErrors.urgency && <p className="text-red-500 text-xs mt-1">{referralFieldErrors.urgency}</p>}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Referral Notes</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Referral Reason <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  required
+                  value={referralForm.referral_reason}
+                  onChange={e => { setReferralForm(prev => ({ ...prev, referral_reason: e.target.value })); setReferralFieldErrors(prev => ({ ...prev, referral_reason: undefined })); }}
+                  placeholder="e.g. Suspected arrhythmia, needs cardiology review"
+                  className={`w-full px-3 py-2.5 border ${referralFieldErrors.referral_reason ? 'border-red-500 bg-red-50' : 'border-slate-300'} rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400`}
+                />
+                {referralFieldErrors.referral_reason && <p className="text-red-500 text-xs mt-1">{referralFieldErrors.referral_reason}</p>}
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Referral Notes <span className="text-red-500">*</span></label>
                 <textarea
                   rows={3}
                   value={referralForm.referral_notes}

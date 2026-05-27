@@ -1,6 +1,8 @@
 {
   "common": {
     "cancel": "Cancel",
+    "back": "Back",
+    "next": "Next",
     "save": "Save",
     "delete": "Delete",
     "edit": "Edit",
@@ -10,6 +12,7 @@
     "search": "Search",
     "loading": "Loading...",
     "status": "Status",
+    "dr": "Dr.",
     "actions": "Actions",
     "na": "N/A",
     "yes": "Yes",
@@ -21,6 +24,8 @@
     "inProgress": "In Progress",
     "paid": "Paid",
     "unpaid": "Unpaid",
+    "referred": "Referred",
+    "waitingPayment": "Waiting Payment",
     "verified": "Verified",
     "failed": "Failed",
     "expired": "Expired",
@@ -68,44 +73,202 @@
     "amharic": "አማርኛ"
   },
   "findDoctor": {
-    "title": "Find a Doctor",
-    "subtitle": "Browse our verified professionals and book a consultation.",
-    "searchPlaceholder": "Search by name or specialty...",
-    "allSpecialties": "All Specialties",
-    "noDoctors": "No doctors found",
-    "adjustSearch": "Try adjusting your search criteria.",
-    "generalPractitioner": "General Practitioner",
-    "yearsExp": "Years Exp.",
-    "newProfessional": "New Professional",
-    "available": "Available for Booking",
-    "unavailable": "Currently Unavailable",
-    "viewAvailability": "View Availability",
-    "bookAppointment": "Book Appointment",
-    "selectSlot": "Select an available slot",
-    "loading": "Loading availability...",
-    "noSlots": "No available slots",
-    "checkBack": "Please check back later or choose another doctor.",
-    "details": "Consultation Details",
-    "selectFirst": "Please select a time slot first to proceed with booking.",
-    "reason": "Reason for Visit",
-    "selectReason": "Select a reason...",
-    "specifyReason": "Please specify your reason...",
-    "symptoms": "Symptoms Description",
-    "detailSymptoms": "Detail your symptoms...",
-    "cancel": "Cancel",
-    "confirm": "Confirm Appointment",
-    "booking": "Booking...",
-    "diseases": {
-      "general": "General Checkup",
-      "fever": "Fever / Cold / Flu",
-      "headache": "Headache / Migraine",
-      "stomach": "Stomach Ache / Digestion",
-      "skin": "Skin Infection / Allergy",
-      "joint": "Joint / Muscle Pain",
-      "breathing": "Breathing Issue / Cough",
-      "dental": "Dental Issue",
-      "eye": "Eye / Vision Problem",
-      "other": "Other (Please specify)"
+    "pageTitle": "Find the Right Doctor",
+    "pageSubtitle": "Answer a few quick questions and we'll match you with the right specialist automatically.",
+    "steps": {
+      "describe": "Describe",
+      "match": "Match",
+      "confirm": "Confirm"
+    },
+    "step1": {
+      "title": "What brings you in today?",
+      "subtitle": "Select the option that best describes your concern.",
+      "symptomsLabel": "Describe Your Symptoms",
+      "symptomsPlaceholder": "Describe your symptoms, duration, pain level, or any important details…",
+      "symptomsNote": "This text is for your doctor's reference only and does not affect routing.",
+      "submit": "Find My Doctor"
+    },
+    "step2": {
+      "recommendedTitle": "Recommended Doctor Type",
+      "gpNote": "You chose to see a General Practitioner first. They can refer you to a specialist if needed.",
+      "preferGp": "I'd prefer to see a GP first instead",
+      "backToRecommended": "Back to recommended: {{specialty}}",
+      "loadingDoctors": "Finding doctors…",
+      "doctorsFound": "{{count}} Doctor Found",
+      "doctorsFound_plural": "{{count}} Doctors Found",
+      "showingSpecialists": "Showing {{specialty}} specialists",
+      "noDoctors": "No {{specialty}} doctors available right now",
+      "noDoctorsDesc": "Try switching to a GP — they can refer you once available.",
+      "seeGps": "See available GPs instead",
+      "startOver": "Start Over",
+      "continueWith": "Continue with Dr. {{name}}"
+    },
+    "step3": {
+      "summaryTitle": "Booking Summary",
+      "title": "Confirm Your Appointment",
+      "labels": {
+        "reason": "Reason",
+        "routedTo": "Routed To",
+        "symptomsNote": "Symptoms Note"
+      },
+      "infoNote": "After confirming, you'll be directed to complete payment. Your consultation will be assigned once payment is verified.",
+      "booking": "Booking…",
+      "confirm": "Confirm Booking"
+    },
+    "doctorCard": {
+      "noQueue": "No queue",
+      "inQueue": "{{count}} in queue",
+      "readyNow": "Ready now",
+      "minWait": "~{{mins}} min wait",
+      "hmWait": "~{{h}}h {{m}}m wait",
+      "hWait": "~{{h}}h wait",
+      "yearsExp": "{{years}}y exp"
+    },
+    "reasons": {
+      "mental_health": {
+        "label": "Mental health concerns",
+        "description": "Anxiety, depression, stress, mood changes",
+        "routingNote": "Mental health concerns are best handled by a Psychiatrist."
+      },
+      "skin": {
+        "label": "Skin problems",
+        "description": "Rashes, acne, eczema, skin infections",
+        "routingNote": "Skin conditions are best evaluated by a Dermatologist."
+      },
+      "heart_chest": {
+        "label": "Heart / chest issues",
+        "description": "Chest pain, palpitations, shortness of breath",
+        "routingNote": "Chest and heart problems are best evaluated by Cardiologist."
+      },
+      "general_illness": {
+        "label": "General illness",
+        "description": "Fever, fatigue, body aches, general discomfort",
+        "routingNote": "General illness is best managed by an Internal Medicine specialist."
+      },
+      "child_health": {
+        "label": "Child health",
+        "description": "Child illness, growth concerns, vaccinations",
+        "routingNote": "Child health concerns are best handled by a Pediatrician."
+      },
+      "womens_health": {
+        "label": "Women's health",
+        "description": "Menstrual issues, pregnancy, reproductive health",
+        "routingNote": "Women's health concerns are best handled by a Gynecologist."
+      },
+      "breathing": {
+        "label": "Breathing problems",
+        "description": "Asthma, chronic cough, breathing difficulty",
+        "routingNote": "Breathing problems are best evaluated by a Pulmonologist."
+      },
+      "brain_nerve": {
+        "label": "Brain / nerve issues",
+        "description": "Headaches, dizziness, numbness, seizures",
+        "routingNote": "Neurological symptoms are best assessed by a Neurologist."
+      },
+      "bone_joint": {
+        "label": "Bone / joint problems",
+        "description": "Joint pain, fractures, back pain, arthritis",
+        "routingNote": "Bone and joint problems are best handled by an Orthopedic specialist."
+      },
+      "not_sure": {
+        "label": "Not sure / Other",
+        "description": "Unsure about symptoms, or something not listed above",
+        "routingNote": "A General Practitioner will assess your condition and refer you if needed."
+      }
+    },
+    "specialties": {
+      "gp": "General Practitioner",
+      "general_practitioner": "General Practitioner",
+      "psychiatrist": "Psychiatrist",
+      "dermatologist": "Dermatologist",
+      "internal_medicine": "Internal Medicine",
+      "pediatrician": "Pediatrician",
+      "gynecologist": "Gynecologist",
+      "pulmonologist": "Pulmonologist",
+      "neurologist": "Neurologist",
+      "orthopedic": "Orthopedic"
+    },
+    "success": "Consultation requested! Please complete payment to confirm.",
+    "errorSelectReason": "Please select a reason for your visit.",
+    "errorSelectDoctor": "Please select a doctor to continue."
+  },
+  "doctorDashboard": {
+    "subtitle": "Your clinical overview and active cases.",
+    "statusBanners": {
+      "pending": {
+        "title": "Account Pending Verification",
+        "desc": "Your credentials are under review by our admin team. You'll receive an email once your account is approved."
+      },
+      "rejected": {
+        "title": "Application Rejected",
+        "desc": "Your application was not approved. Please contact support or re-register with updated documents.",
+        "reasonLabel": "Reason:"
+      },
+      "suspended": {
+        "title": "Account Suspended",
+        "desc": "Your account has been suspended. Please contact support for assistance."
+      },
+      "verified": {
+        "title": "Verified Professional",
+        "desc": "Your credentials have been verified. You can now accept patient consultations."
+      }
+    },
+    "tabs": {
+      "overview": "Overview & Patients",
+      "history": "Clinical History",
+      "reviews": "My Reviews"
+    },
+    "stats": {
+      "pending": "Pending Patients",
+      "active": "Active Chats",
+      "completed": "Completed"
+    },
+    "patientsTable": {
+      "title": "Assigned Patients",
+      "name": "Patient Name",
+      "symptoms": "Symptoms / Reason",
+      "appointment": "Appointment",
+      "empty": "No active or pending patients right now."
+    },
+    "actions": {
+      "resume": "Resume Case",
+      "refer": "Refer",
+      "chat": "Chat",
+      "waitingLab": "Waiting on Lab..."
+    },
+    "history": {
+      "title": "Full Clinical Records",
+      "desc": "View your complete consultation history, all prescriptions issued, and treatment plans in one place.",
+      "button": "Open Clinical History"
+    },
+    "reviews": {
+      "title": "Patient Feedback",
+      "empty": "No reviews yet",
+      "emptyDesc": "Reviews will appear here after patients complete consultations with you.",
+      "rating": "Rating",
+      "reviews_count": "{{count}} review",
+      "reviews_count_plural": "{{count}} reviews"
+    },
+    "referral": {
+      "title": "Refer Patient to Specialist",
+      "subtitle": "A new specialist consultation will be created for this patient.",
+      "specialistType": "Specialist Type",
+      "selectSpecialist": "Select specialist type…",
+      "urgency": "Urgency Level",
+      "routine": "Routine",
+      "urgent": "Urgent",
+      "emergency": "Emergency",
+      "notes": "Referral Notes",
+      "notesPlaceholder": "Clinical summary, reason for referral, relevant findings…",
+      "create": "Create Referral"
+    },
+    "toasts": {
+      "slotAdded": "Availability slot added!",
+      "caseResumed": "Case resumed! You can now continue the consultation.",
+      "referSuccess": "Patient referred to {{specialty}} successfully.",
+      "errorAddSlot": "Failed to add slot",
+      "errorResume": "Failed to resume consultation",
+      "errorRefer": "Failed to create referral"
     }
   },
   "patientDashboard": {
@@ -128,7 +291,21 @@
     "startNew": "Start a new consultation",
     "stayOnTrack": "Stay on Track",
     "checkReminders": "Check your reminders to ensure you don't miss any medication.",
-    "viewSchedule": "View Schedule"
+    "viewSchedule": "View Schedule",
+    "referral": {
+      "title": "Specialist Referral",
+      "none": "No active referrals.",
+      "specialist": "Assigned specialist",
+      "specialty": "Specialty",
+      "room": "Room",
+      "consultationStatus": "Consultation",
+      "paymentStatus": "Payment",
+      "payNow": "Pay specialist fee",
+      "openChat": "Open specialist chat",
+      "paymentRequired": "Specialist payment required",
+      "paymentSuccess": "Payment verified",
+      "activeConsultation": "Active specialist consultation"
+    }
   },
   "publicPages": {
     "landing": {
@@ -136,7 +313,7 @@
       "heroTitle1": "Modern Healthcare,",
       "heroTitle2": "Simplified.",
       "heroDesc": "Connect with top doctors instantly, manage your medical history, and never miss a dose with our intelligent recommendation platform.",
-      "getStarted": "Get Started Free",
+      "getStarted": "Get Started",
       "signIn": "Sign In",
       "happyPatients": "Happy Patients",
       "verified": "Verified",
@@ -154,8 +331,22 @@
     },
     "about": {
       "title": "About Us",
-      "p1": "HealthConnect was founded with a simple mission: to make healthcare accessible, modern, and patient-centric. We bridge the gap between patients and healthcare providers by combining world-class technology with compassionate care.",
-      "p2": "Our platform empowers you to take control of your medical history, seamlessly schedule consultations, and simplify your medication management."
+      "welcome": "Welcome to our healthcare System: a modern digital solution designed to make healthcare services more accessible, efficient, and reliable for everyone.",
+      "connection": "Our system connects patients, doctors, laboratorists, and radiologists through a secure and intelligent online environment that supports consultation, laboratory services, radiology requests, digital prescriptions, medication reminders, and real-time communication.",
+      "commitment": "We are committed to improving healthcare accessibility by enabling patients to receive professional medical support anytime and anywhere. Through advanced technologies such as smart patient prioritization, integrated laboratory and radiology workflows, online payments, notifications, and secure medical record management, our platform delivers a seamless healthcare experience.",
+      "mission": "Our mission is to enhance the quality of healthcare services by reducing delays, improving communication between healthcare professionals and patients, and ensuring efficient case management from consultation to diagnosis and treatment.",
+      "prioritize": {
+        "title": "We prioritize:",
+        "items": [
+          "Patient safety and privacy",
+          "Professional and ethical healthcare delivery",
+          "Secure and scalable technology",
+          "Efficient collaboration among healthcare providers",
+          "User-friendly and accessible healthcare services"
+        ]
+      },
+      "vision": "Our vision is to build a trusted digital healthcare ecosystem that simplifies medical services and supports better healthcare outcomes for communities everywhere.",
+      "closing": "Together, we are transforming healthcare through innovation, connectivity, and professionalism."
     },
     "contact": {
       "title": "Contact Support",
@@ -180,8 +371,13 @@
     "register": {
       "title": "Create Account",
       "subtitle": "Join HealthConnect today",
+      "firstNameLabel": "First Name",
+      "lastNameLabel": "Last Name",
+      "firstNamePlaceholder": "Addisu",
+      "lastNamePlaceholder": "Gebeyehu",
       "nameLabel": "Full Name",
       "namePlaceholder": "Addisu Gebeyehu",
+      "emailLabel": "Email Address",
       "ageLabel": "Age",
       "sexLabel": "Sex",
       "male": "Male",
@@ -192,6 +388,8 @@
       "amA": "I am a",
       "patient": "Patient",
       "doctor": "Doctor",
+      "patientStepLabel": "Your account details",
+      "registerButton": "Register",
       "docVerifyDetails": "Doctor Verification Details",
       "licenseNumber": "Medical License Number *",
       "licenseAuth": "License Issuing Authority *",
@@ -227,7 +425,11 @@
     "noChatTitle": "No Conversation Selected",
     "noChatDesc": "Choose an active consultation from the sidebar or start a new one.",
     "online": "Online",
-    "videoCall": "Video Call",
+    "videoCall": "Start video call",
+    "clinicalActions": "Clinical actions",
+    "requestLabRadiology": "Request lab or radiology",
+    "prescribe": "Write prescription",
+    "consultationDetails": "Consultation details",
     "docAwaitingRole": "Awaiting Doctor",
     "patientRole": "Patient",
     "paymentReview": "Payment Under Review",
@@ -240,7 +442,29 @@
     "accessExpired": "Access Expired",
     "paymentRequired": "Payment Required",
     "paymentFailedDesc": "Your previous submission was rejected. Please review your transfer and re-upload the correct screenshot.",
-    "accessExpiredDesc": "Your 1-week consultation access has ended. Please submit a new payment to continue chatting with your doctor.",
+    "accessExpiredDesc": "Your consultation access has ended. Please submit a new payment to continue chatting with your doctor.",
+    "specialistPaymentRequired": "Specialist Payment Required",
+    "specialistPaymentRequiredDesc": "Your GP has referred you to a specialist. To proceed, please pay the specialist consultation fee. This will activate your new consultation and open the chat with your specialist.",
+    "referredReadOnly": "This consultation has been referred to a specialist. You can still view the history, but new messages are disabled.",
+    "redirectingToSpecialist": "Payment successful! Redirecting to your specialist consultation...",
+    "referralCreated": "Your GP referred you to {{specialty}}. Please complete specialist payment.",
+    "referToSpecialist": "Refer to Specialist",
+    "referToSpecialistHint": "Case beyond GP scope — refer to the right specialist",
+    "referModalTitle": "Refer Patient to Specialist",
+    "referModalDesc": "Use when the case requires specialist care. Patient will pay the specialist fee to continue.",
+    "referSpecialty": "Specialist type",
+    "referSpecialtyPlaceholder": "Select specialist…",
+    "referUrgency": "Urgency",
+    "urgencyRoutine": "Routine",
+    "urgencyUrgent": "Urgent",
+    "urgencyEmergency": "Emergency",
+    "referReason": "Referral reason",
+    "referReasonPlaceholder": "e.g. Suspected cardiac issue — needs cardiology",
+    "referNotes": "Clinical notes for specialist",
+    "referNotesPlaceholder": "Summary, findings, tests ordered, relevant history…",
+    "referSubmit": "Create referral",
+    "referSuccess": "Patient referred to {{specialty}}. They must complete specialist payment.",
+    "referError": "Failed to create referral",
     "paymentRequiredDesc": "Before you can start your consultation, please complete the payment and upload the screenshot.",
     "reason": "Reason:",
     "paymentInstructions": "Payment Instructions:",
@@ -269,7 +493,9 @@
     "requestedOn": "Requested on",
     "chatClosed": "This consultation is closed.",
     "typeMessage": "Type your message...",
-    "viewAttachment": "View Attachment"
+    "viewAttachment": "View Attachment",
+    "messageSent": "Delivered",
+    "messageSeen": "Seen"
   },
   "reminders": {
     "title": "Reminders",
@@ -396,9 +622,9 @@
       "registerBtn": "+ Register Doctor",
       "formTitle": "Medical Professional Registration",
       "fullName": "Full Name",
-      "fullNamePlaceholder": "Dr. Jane Doe",
+      "fullNamePlaceholder": "Dr. Memar Alemneh",
       "emailAddress": "Email Address",
-      "emailPlaceholder": "jane.doe@hospital.com",
+      "emailPlaceholder": "memar.alemneh@hospital.com",
       "specialty": "Specialty",
       "specialtyPlaceholder": "e.g. Cardiology, Pediatrics",
       "licenseNumber": "Medical License Number",
@@ -620,8 +846,9 @@
     "fullName": "Full Name",
     "emailAddress": "Email Address",
     "phoneNumber": "Phone Number",
-    "phonePlaceholder": "+1 (555) 000-0000",
+    "phonePlaceholder": "+251911234567",
     "timezone": "Timezone",
+    "specialty": "Medical Specialty",
     "capabilities": "Capabilities / Specializations",
     "noneAssigned": "None assigned",
     "contactAdmin": "Please contact your administrator to update your assigned capabilities.",

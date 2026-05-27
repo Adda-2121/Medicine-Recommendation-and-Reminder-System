@@ -1,7 +1,7 @@
-﻿import React, { useContext } from 'react';
+import React, { useContext } from 'react';
 import { Link, Outlet } from 'react-router-dom';
 import { Activity, LayoutDashboard } from 'lucide-react';
-import LanguageSwitcher from '../components/common/LanguageSwitcher';
+import ProfessionalLanguageSwitcher from '../components/common/ProfessionalLanguageSwitcher';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../contexts/AuthContext';
 
@@ -19,32 +19,34 @@ export const PublicLayout = () => {
 
   return (
   <div className="min-h-screen bg-slate-50 flex flex-col font-sans overflow-x-hidden">
-    <header className="bg-white/95 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50">
-      <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-        <Link to="/" className="flex items-center space-x-2 text-primary-600">
-          <Activity size={24} strokeWidth={2.5} />
-          <span className="font-bold text-xl tracking-tight text-slate-800">HealthConnect</span>
+    <header className="bg-white/98 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-50 shadow-sm">
+      <div className="container mx-auto px-6 py-4 flex justify-between items-center">
+        <Link to="/" className="flex items-center space-x-3 text-primary-600 group">
+          <div className="bg-primary-600 p-2 rounded-xl shadow-md group-hover:shadow-lg transition-shadow">
+            <Activity size={24} strokeWidth={2.5} className="text-white" />
+          </div>
+          <span className="font-extrabold text-2xl tracking-tight text-slate-800 group-hover:text-primary-600 transition-colors">HealthConnect</span>
         </Link>
-        <nav className="hidden md:flex space-x-8">
-          <Link to="/" className="text-slate-600 hover:text-primary-600 font-medium transition">{t('publicLayout.home')}</Link>
-          <Link to="/features" className="text-slate-600 hover:text-primary-600 font-medium transition">{t('publicLayout.features')}</Link>
-          <Link to="/about" className="text-slate-600 hover:text-primary-600 font-medium transition">{t('publicLayout.about')}</Link>
-          <Link to="/contact" className="text-slate-600 hover:text-primary-600 font-medium transition">{t('publicLayout.contact')}</Link>
+        <nav className="hidden md:flex items-center space-x-1 bg-slate-50/80 rounded-full px-2 py-1.5 border border-slate-200/60">
+          <Link to="/" className="px-5 py-2 text-slate-700 hover:text-primary-600 hover:bg-white font-semibold transition-all rounded-full text-sm">{t('publicLayout.home')}</Link>
+          <Link to="/features" className="px-5 py-2 text-slate-700 hover:text-primary-600 hover:bg-white font-semibold transition-all rounded-full text-sm">{t('publicLayout.features')}</Link>
+          <Link to="/about" className="px-5 py-2 text-slate-700 hover:text-primary-600 hover:bg-white font-semibold transition-all rounded-full text-sm">{t('publicLayout.about')}</Link>
+          <Link to="/contact" className="px-5 py-2 text-slate-700 hover:text-primary-600 hover:bg-white font-semibold transition-all rounded-full text-sm">{t('publicLayout.contact')}</Link>
         </nav>
-        <div className="flex items-center space-x-4">
-          <LanguageSwitcher />
+        <div className="flex items-center space-x-3">
+          <ProfessionalLanguageSwitcher />
           {user ? (
             <Link
               to={dashboardPath}
-              className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2 text-sm font-medium rounded-md hover:bg-primary-700 shadow-sm transition"
+              className="flex items-center gap-2 bg-gradient-to-r from-primary-600 to-primary-700 text-white px-5 py-2.5 text-sm font-bold rounded-full hover:from-primary-700 hover:to-primary-800 shadow-md hover:shadow-lg transition-all"
             >
-              <LayoutDashboard size={16} />
-              Back to Dashboard
+              <LayoutDashboard size={18} />
+              Dashboard
             </Link>
           ) : (
             <>
-              <Link to="/login" className="text-slate-600 hover:text-primary-600 font-medium transition">{t('publicLayout.login')}</Link>
-              <Link to="/register" className="bg-primary-600 text-white px-4 py-2 text-sm font-medium rounded-md hover:bg-primary-700 shadow-sm transition">{t('publicLayout.register')}</Link>
+              <Link to="/login" className="text-slate-700 hover:text-primary-600 font-semibold transition-colors px-4 py-2 text-sm">{t('publicLayout.login')}</Link>
+              <Link to="/register" className="bg-gradient-to-r from-primary-600 to-primary-700 text-white px-6 py-2.5 text-sm font-bold rounded-full hover:from-primary-700 hover:to-primary-800 shadow-md hover:shadow-lg transition-all">{t('publicLayout.register')}</Link>
             </>
           )}
         </div>
@@ -307,25 +309,56 @@ export const HealthInformation = () => {
 export const Features = () => {
   const { t } = useTranslation();
   return (
-  <section className="py-24 bg-white flex-1 flex flex-col justify-center">
-    <div className="container mx-auto px-4 max-w-5xl">
-      <h2 className="text-4xl font-bold text-center text-slate-800 mb-12">{t('publicPages.features.title')}</h2>
+  <section className="py-24 bg-gradient-to-b from-slate-50 to-white flex-1 flex flex-col justify-center">
+    <div className="container mx-auto px-4 max-w-6xl">
+      <div className="text-center mb-16">
+        <div className="inline-flex items-center space-x-2 bg-primary-50 text-primary-700 px-4 py-2 rounded-full mb-6 border border-primary-100 shadow-sm">
+          <Activity size={18} className="text-primary-600" />
+          <span className="font-bold text-sm uppercase tracking-wider">Platform Features</span>
+        </div>
+        <h2 className="text-4xl md:text-5xl font-extrabold text-slate-800 mb-4 tracking-tight">{t('publicPages.features.title')}</h2>
+        <p className="text-lg text-slate-600 max-w-2xl mx-auto">Discover the powerful features that make healthcare accessible and efficient</p>
+      </div>
+      
       <div className="grid md:grid-cols-3 gap-8">
-        <div className="p-8 bg-slate-50 rounded-2xl text-center shadow-sm border border-slate-100 hover:shadow-md transition">
-          <div className="w-16 h-16 bg-primary-100 text-primary-600 flex items-center justify-center rounded-full mx-auto mb-6 text-2xl font-bold">1</div>
-          <h3 className="text-xl font-bold text-slate-800 mb-3">{t('publicPages.features.findDoctors')}</h3>
-          <p className="text-slate-600">{t('publicPages.features.findDoctorsDesc')}</p>
+        <div className="group p-8 bg-white rounded-3xl text-center shadow-md border border-slate-100 hover:shadow-2xl hover:border-primary-200 transition-all duration-300 transform hover:-translate-y-2">
+          <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-600 text-white flex items-center justify-center rounded-2xl mx-auto mb-6 shadow-lg group-hover:shadow-xl group-hover:scale-110 transition-all duration-300">
+            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+          <h3 className="text-2xl font-bold text-slate-800 mb-4 group-hover:text-primary-600 transition-colors">{t('publicPages.features.findDoctors')}</h3>
+          <p className="text-slate-600 leading-relaxed">{t('publicPages.features.findDoctorsDesc')}</p>
         </div>
-        <div className="p-8 bg-slate-50 rounded-2xl text-center shadow-sm border border-slate-100 hover:shadow-md transition">
-          <div className="w-16 h-16 bg-primary-100 text-primary-600 flex items-center justify-center rounded-full mx-auto mb-6 text-2xl font-bold">2</div>
-          <h3 className="text-xl font-bold text-slate-800 mb-3">{t('publicPages.features.liveConsultations')}</h3>
-          <p className="text-slate-600">{t('publicPages.features.liveConsultationsDesc')}</p>
+        
+        <div className="group p-8 bg-white rounded-3xl text-center shadow-md border border-slate-100 hover:shadow-2xl hover:border-primary-200 transition-all duration-300 transform hover:-translate-y-2">
+          <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white flex items-center justify-center rounded-2xl mx-auto mb-6 shadow-lg group-hover:shadow-xl group-hover:scale-110 transition-all duration-300">
+            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <h3 className="text-2xl font-bold text-slate-800 mb-4 group-hover:text-primary-600 transition-colors">{t('publicPages.features.liveConsultations')}</h3>
+          <p className="text-slate-600 leading-relaxed">{t('publicPages.features.liveConsultationsDesc')}</p>
         </div>
-        <div className="p-8 bg-slate-50 rounded-2xl text-center shadow-sm border border-slate-100 hover:shadow-md transition">
-          <div className="w-16 h-16 bg-primary-100 text-primary-600 flex items-center justify-center rounded-full mx-auto mb-6 text-2xl font-bold">3</div>
-          <h3 className="text-xl font-bold text-slate-800 mb-3">{t('publicPages.features.smartReminders')}</h3>
-          <p className="text-slate-600">{t('publicPages.features.smartRemindersDesc')}</p>
+        
+        <div className="group p-8 bg-white rounded-3xl text-center shadow-md border border-slate-100 hover:shadow-2xl hover:border-primary-200 transition-all duration-300 transform hover:-translate-y-2">
+          <div className="w-20 h-20 bg-gradient-to-br from-amber-500 to-amber-600 text-white flex items-center justify-center rounded-2xl mx-auto mb-6 shadow-lg group-hover:shadow-xl group-hover:scale-110 transition-all duration-300">
+            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+          </div>
+          <h3 className="text-2xl font-bold text-slate-800 mb-4 group-hover:text-primary-600 transition-colors">{t('publicPages.features.smartReminders')}</h3>
+          <p className="text-slate-600 leading-relaxed">{t('publicPages.features.smartRemindersDesc')}</p>
         </div>
+      </div>
+      
+      <div className="mt-16 text-center">
+        <Link to="/register" className="inline-flex items-center gap-2 bg-gradient-to-r from-primary-600 to-primary-700 text-white px-8 py-4 rounded-full shadow-lg hover:shadow-xl hover:from-primary-700 hover:to-primary-800 transition-all font-bold text-lg group">
+          Get Started Today
+          <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+          </svg>
+        </Link>
       </div>
     </div>
   </section>
@@ -334,29 +367,252 @@ export const Features = () => {
 export const About = () => {
   const { t } = useTranslation();
   return (
-  <section className="py-24 bg-slate-50 flex-1 flex flex-col justify-center">
-    <div className="container mx-auto px-4 max-w-3xl text-center">
-      <h2 className="text-4xl font-bold text-slate-800 mb-6">{t('publicPages.about.title')}</h2>
-      <p className="text-lg text-slate-600 leading-relaxed mb-6">
-        {t('publicPages.about.p1')}
-      </p>
-      <p className="text-lg text-slate-600 leading-relaxed">
-        {t('publicPages.about.p2')}
-      </p>
-    </div>
-  </section>
-)};
+    <section className="py-20 bg-gradient-to-b from-slate-50 via-white to-slate-50 flex-1">
+      <div className="container mx-auto px-4 max-w-7xl">
+        {/* Hero Section */}
+        <div className="text-center mb-20">
+          <div className="inline-flex items-center space-x-2 bg-primary-50 text-primary-700 px-4 py-2 rounded-full mb-6 border border-primary-100 shadow-sm">
+            <Activity size={18} className="text-primary-600" />
+            <span className="font-bold text-sm uppercase tracking-wider">About HealthConnect</span>
+          </div>
+          <h1 className="text-5xl md:text-6xl font-extrabold text-slate-800 mb-6 tracking-tight">
+            {t('publicPages.about.title')}
+          </h1>
+          <p className="text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed">
+            Transforming healthcare delivery through innovative technology and compassionate care
+          </p>
+        </div>
+
+        {/* Main Content with Image */}
+        <div className="flex flex-col lg:flex-row items-center gap-16 mb-24">
+          <div className="flex-1 lg:order-2">
+            <div className="relative rounded-3xl overflow-hidden shadow-2xl border-8 border-white transform hover:scale-[1.02] transition-transform duration-500">
+              <img
+                src="/ethiopian-healthcare-about.png"
+                alt="Ethiopian Healthcare Innovation"
+                className="w-full h-[500px] object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-900/50 via-transparent to-transparent"></div>
+              
+              {/* Floating Stats */}
+              <div className="absolute bottom-6 left-6 right-6 flex gap-4">
+                <div className="flex-1 bg-white/95 backdrop-blur-sm p-4 rounded-2xl shadow-lg">
+                  <p className="text-3xl font-extrabold text-primary-600">1000+</p>
+                  <p className="text-xs text-slate-600 font-semibold">Happy Patients</p>
+                </div>
+                <div className="flex-1 bg-white/95 backdrop-blur-sm p-4 rounded-2xl shadow-lg">
+                  <p className="text-3xl font-extrabold text-emerald-600">50+</p>
+                  <p className="text-xs text-slate-600 font-semibold">Expert Doctors</p>
+                </div>
+                <div className="flex-1 bg-white/95 backdrop-blur-sm p-4 rounded-2xl shadow-lg">
+                  <p className="text-3xl font-extrabold text-amber-600">24/7</p>
+                  <p className="text-xs text-slate-600 font-semibold">Support</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex-1 lg:order-1">
+            <h2 className="text-3xl font-bold text-slate-800 mb-6 flex items-center gap-3">
+              <div className="w-12 h-12 bg-primary-100 text-primary-600 rounded-xl flex items-center justify-center">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              Our Story
+            </h2>
+            <div className="space-y-5 text-slate-600 leading-relaxed">
+              <p className="text-lg font-medium text-slate-700">
+                {t('publicPages.about.welcome')}
+              </p>
+              <p className="text-base">
+                {t('publicPages.about.connection')}
+              </p>
+              <p className="text-base">
+                {t('publicPages.about.commitment')}
+              </p>
+            </div>
+            
+            <div className="mt-8 flex flex-wrap gap-4">
+              <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-full border border-emerald-200">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span className="font-semibold text-sm">Verified Professionals</span>
+              </div>
+              <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-full border border-blue-200">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span className="font-semibold text-sm">Secure Platform</span>
+              </div>
+              <div className="flex items-center gap-2 bg-amber-50 text-amber-700 px-4 py-2 rounded-full border border-amber-200">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span className="font-semibold text-sm">24/7 Available</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Mission & Values Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-24">
+          {/* Mission Card */}
+          <div className="bg-white p-10 rounded-3xl shadow-xl border border-slate-100 hover:shadow-2xl transition-shadow duration-300 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-40 h-40 bg-primary-50 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-500"></div>
+            <div className="relative z-10">
+              <div className="w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-600 text-white rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                </svg>
+              </div>
+              <h3 className="text-3xl font-bold text-slate-800 mb-4">Our Mission</h3>
+              <p className="text-slate-600 leading-relaxed text-lg">
+                {t('publicPages.about.mission')}
+              </p>
+            </div>
+          </div>
+
+          {/* Values Card */}
+          <div className="bg-gradient-to-br from-primary-600 to-primary-700 p-10 rounded-3xl shadow-xl text-white relative overflow-hidden group">
+            <div className="absolute bottom-0 left-0 w-40 h-40 bg-white/10 rounded-full translate-y-1/2 -translate-x-1/2 group-hover:scale-150 transition-transform duration-500"></div>
+            <div className="relative z-10">
+              <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-3xl font-bold mb-6 flex items-center gap-3">
+                {t('publicPages.about.prioritize.title')}
+              </h3>
+              <ul className="space-y-4">
+                {(t('publicPages.about.prioritize.items', { returnObjects: true }) || []).map((item, index) => (
+                  <li key={index} className="flex items-start gap-3 group/item">
+                    <div className="mt-1 w-6 h-6 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0 group-hover/item:bg-white/30 transition-colors">
+                      <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <span className="text-primary-50 font-medium text-lg">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* Vision Statement */}
+        <div className="relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-primary-100 via-blue-50 to-primary-100 rounded-[3rem] transform -rotate-1"></div>
+          <div className="relative bg-white p-12 md:p-16 rounded-[3rem] shadow-2xl border border-slate-100">
+            <div className="text-center max-w-4xl mx-auto">
+              <div className="w-20 h-20 bg-gradient-to-br from-primary-500 to-primary-600 text-white rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-xl">
+                <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              </div>
+              <h3 className="text-4xl font-extrabold text-slate-800 mb-6">Our Vision</h3>
+              <div className="relative">
+                <svg className="absolute -left-4 -top-4 w-12 h-12 text-primary-200 opacity-50" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
+                </svg>
+                <p className="text-2xl text-slate-700 leading-relaxed mb-8 italic font-medium relative z-10">
+                  {t('publicPages.about.vision')}
+                </p>
+              </div>
+              <div className="h-1 w-32 bg-gradient-to-r from-transparent via-primary-400 to-transparent mx-auto mb-8"></div>
+              <p className="text-3xl font-extrabold bg-gradient-to-r from-primary-600 to-primary-700 bg-clip-text text-transparent">
+                {t('publicPages.about.closing')}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Call to Action */}
+        <div className="mt-20 text-center">
+          <Link to="/register" className="inline-flex items-center gap-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white px-10 py-5 rounded-full shadow-xl hover:shadow-2xl hover:from-primary-700 hover:to-primary-800 transition-all font-bold text-lg group">
+            Join Our Healthcare Community
+            <svg className="w-6 h-6 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+};
 
 export const Contact = () => {
   const { t } = useTranslation();
   return (
-  <section className="py-24 bg-white flex-1 flex flex-col justify-center">
-    <div className="container mx-auto px-4 max-w-3xl text-center">
-      <h2 className="text-4xl font-bold text-slate-800 mb-6">{t('publicPages.contact.title')}</h2>
-      <p className="text-lg text-slate-600 mb-8">{t('publicPages.contact.desc')}</p>
-      <a href="mailto:support@healthconnect.com" className="inline-block bg-primary-600 text-white px-8 py-3 rounded-md shadow-md hover:bg-primary-700 transition font-medium text-lg">
-        {t('publicPages.contact.emailButton')}
-      </a>
+  <section className="py-24 bg-gradient-to-b from-white to-slate-50 flex-1 flex flex-col justify-center">
+    <div className="container mx-auto px-4 max-w-4xl">
+      <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden">
+        <div className="bg-gradient-to-r from-primary-600 to-primary-700 p-12 text-center text-white relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/10 rounded-full translate-y-1/2 -translate-x-1/2"></div>
+          <div className="relative z-10">
+            <div className="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg">
+              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h2 className="text-4xl md:text-5xl font-extrabold mb-4 tracking-tight">{t('publicPages.contact.title')}</h2>
+            <p className="text-xl text-primary-100 max-w-2xl mx-auto">{t('publicPages.contact.desc')}</p>
+          </div>
+        </div>
+        
+        <div className="p-12 text-center">
+          <div className="grid md:grid-cols-3 gap-8 mb-12">
+            <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+              <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h3 className="font-bold text-slate-800 mb-2">Email Support</h3>
+              <p className="text-sm text-slate-600">support@healthconnect.com</p>
+            </div>
+            
+            <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                </svg>
+              </div>
+              <h3 className="font-bold text-slate-800 mb-2">Phone Support</h3>
+              <p className="text-sm text-slate-600">+251 911 234 567</p>
+            </div>
+            
+            <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+              <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="font-bold text-slate-800 mb-2">Working Hours</h3>
+              <p className="text-sm text-slate-600">24/7 Available</p>
+            </div>
+          </div>
+          
+          <a 
+            href="mailto:support@healthconnect.com" 
+            className="inline-flex items-center gap-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white px-10 py-4 rounded-full shadow-lg hover:shadow-xl hover:from-primary-700 hover:to-primary-800 transition-all font-bold text-lg group"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            {t('publicPages.contact.emailButton')}
+            <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+          </a>
+          
+          <p className="mt-8 text-slate-500 text-sm">We typically respond within 24 hours</p>
+        </div>
+      </div>
     </div>
   </section>
 )};

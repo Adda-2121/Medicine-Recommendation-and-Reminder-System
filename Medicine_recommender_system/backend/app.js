@@ -23,6 +23,7 @@ const triageRoutes = require('./routes/triageRoutes');
 // Init Cron Jobs
 require('./utils/reminderCron');
 require('./utils/paymentCron');
+require('./utils/consultationCron');
 
 const path = require('path');
 

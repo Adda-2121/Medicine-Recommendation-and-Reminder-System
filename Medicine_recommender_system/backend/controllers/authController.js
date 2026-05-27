@@ -5,150 +5,64 @@ const { Op } = require('sequelize');
 const { User, sequelize } = require('../models');
 const sendEmail = require('../utils/sendEmail');
 const { sendSMS } = require('../utils/smsService');
-const validateEmail = require('../utils/validateEmail');
 
-// In-memory OTP store keyed by identifier (email or phone)
-// { identifier -> { otp, expiresAt, verified, method } }
-const otpStore = new Map();
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-const startCooldownCleanup = (key) => {
-  setTimeout(() => otpStore.delete(key), 11 * 60 * 1000); // auto-clean after 11 min
-};
-
-// @desc    Send email verification OTP before registration
-// @route   POST /api/auth/send-verification
+// @desc    Check if email exists
+// @route   POST /api/auth/check-email
 // @access  Public
-exports.sendVerificationOtp = async (req, res) => {
+exports.checkEmail = async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) return res.status(400).json({ message: 'Email is required.' });
-
-    // 1. Validate email is real (format + MX + disposable check)
-    const emailCheck = await validateEmail(email);
-    if (!emailCheck.valid) {
-      return res.status(400).json({ message: emailCheck.reason });
+    
+    if (!email) {
+      return res.status(400).json({ exists: false, message: 'Email is required' });
     }
-
-    // 2. Check not already registered
-    const existing = await User.findOne({ where: { email } });
-    if (existing) {
-      return res.status(400).json({ message: 'An account with this email already exists.' });
+    
+    const user = await User.findOne({ 
+      where: { email: email.toLowerCase().trim() } 
+    });
+    
+    if (user) {
+      return res.json({ 
+        exists: true, 
+        message: 'An account with this email already exists' 
+      });
     }
-
-    // 3. Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 10 * 60 * 1000;
-    const key = email.toLowerCase();
-
-    otpStore.set(key, { otp, expiresAt, verified: false, method: 'email' });
-    startCooldownCleanup(key);
-
-    console.log(`\n🔐 [EMAIL OTP] ${email} → CODE: ${otp}  (expires in 10 min)\n`);
-
-    const message =
-      `Your HealthConnect email verification code is:\n\n` +
-      `  ${otp}\n\n` +
-      `This code expires in 10 minutes. Do not share it with anyone.\n\n` +
-      `If you did not request this, please ignore this email.`;
-
-    try {
-      await sendEmail({ email, subject: 'HealthConnect — Email Verification Code', message });
-      return res.status(200).json({ message: 'Verification code sent to your email.' });
-    } catch (emailError) {
-      console.error('\n[WARNING] Email failed to send due to network/SMTP issues.', emailError.message);
-      if (process.env.NODE_ENV === 'development') {
-        return res.status(200).json({ 
-          message: `Email sending failed (network blocked). DEV MODE FALLBACK: Your verification code is ${otp}` 
-        });
-      }
-      throw emailError;
-    }
+    
+    return res.json({ exists: false, message: 'Email is available' });
   } catch (error) {
-    console.error('Send verification OTP error:', error);
-    return res.status(500).json({ message: 'Failed to send verification email. Please try again.' });
+    console.error('Check email error:', error);
+    return res.status(500).json({ exists: false, message: 'Server error' });
   }
 };
 
-// @desc    Send SMS verification OTP before registration
-// @route   POST /api/auth/send-verification-sms
+// @desc    Check if phone number exists
+// @route   POST /api/auth/check-phone
 // @access  Public
-exports.sendVerificationSms = async (req, res) => {
+exports.checkPhone = async (req, res) => {
   try {
     const { phone } = req.body;
-    if (!phone) return res.status(400).json({ message: 'Phone number is required.' });
-
-    // Basic phone format check — must start with + and have 7-15 digits
-    const phoneRegex = /^\+[1-9]\d{6,14}$/;
-    if (!phoneRegex.test(phone.replace(/\s/g, ''))) {
-      return res.status(400).json({ message: 'Please enter a valid phone number with country code (e.g. +251911234567).' });
+    
+    if (!phone) {
+      return res.status(400).json({ exists: false, message: 'Phone number is required' });
     }
-
-    const normalised = phone.replace(/\s/g, '');
-
-    // Check not already registered with this phone
-    const existing = await User.findOne({ where: { phone_number: normalised } });
-    if (existing) {
-      return res.status(400).json({ message: 'An account with this phone number already exists.' });
+    
+    const user = await User.findOne({ 
+      where: { phone_number: phone.replace(/\s/g, '') } 
+    });
+    
+    if (user) {
+      return res.json({ 
+        exists: true, 
+        message: 'An account with this phone number already exists' 
+      });
     }
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 10 * 60 * 1000;
-
-    otpStore.set(normalised, { otp, expiresAt, verified: false, method: 'sms' });
-    startCooldownCleanup(normalised);
-
-    console.log(`\n🔐 [SMS OTP] ${normalised} → CODE: ${otp}  (expires in 10 min)\n`);
-
-    const sent = await sendSMS(normalised,
-      `Your HealthConnect verification code is: ${otp}. It expires in 10 minutes. Do not share it.`
-    );
-
-    if (!sent) {
-      return res.status(500).json({ message: 'Failed to send SMS. Please try email verification instead.' });
-    }
-
-    return res.status(200).json({ message: 'Verification code sent via SMS.' });
+    
+    return res.json({ exists: false, message: 'Phone number is available' });
   } catch (error) {
-    console.error('Send SMS OTP error:', error);
-    return res.status(500).json({ message: 'Failed to send SMS. Please try again.' });
+    console.error('Check phone error:', error);
+    return res.status(500).json({ exists: false, message: 'Server error' });
   }
 };
-
-// @desc    Verify OTP (email or SMS)
-// @route   POST /api/auth/verify-otp
-// @access  Public
-exports.verifyOtp = async (req, res) => {
-  try {
-    const { identifier, otp } = req.body; // identifier = email or phone
-    if (!identifier || !otp) return res.status(400).json({ message: 'Identifier and OTP are required.' });
-
-    const key = identifier.toLowerCase().replace(/\s/g, '');
-    const record = otpStore.get(key);
-
-    if (!record) {
-      return res.status(400).json({ message: 'No verification code found. Please request a new one.' });
-    }
-    if (Date.now() > record.expiresAt) {
-      otpStore.delete(key);
-      return res.status(400).json({ message: 'Verification code has expired. Please request a new one.' });
-    }
-    if (record.otp !== otp.toString().trim()) {
-      return res.status(400).json({ message: 'Incorrect verification code. Please try again.' });
-    }
-
-    record.verified = true;
-    otpStore.set(key, record);
-
-    return res.status(200).json({ message: 'Verified successfully.', method: record.method });
-  } catch (error) {
-    console.error('Verify OTP error:', error);
-    return res.status(500).json({ message: 'Server error verifying code.' });
-  }
-};
-
-// Keep old endpoint name as alias for backwards compatibility
-exports.verifyEmailOtp = exports.verifyOtp;
 
 // @desc    Register a new user
 // @route   POST /api/auth/register
@@ -157,40 +71,66 @@ exports.register = async (req, res) => {
   try {
     const { name, email, password, role, phone_number, age, sex, license_number, license_issuing_authority, license_expiry_date, degree, university_name, graduation_year, experience_years, current_workplace, specialty } = req.body;
 
-    // Validation
+    // Validation: Name
+    if (!name || name.trim().length === 0) {
+      return res.status(400).json({ message: 'please wright your full name' });
+    }
+    if (name.trim().length < 2) {
+      return res.status(400).json({ message: 'please wright your full name' });
+    }
     if (/\d/.test(name)) {
       return res.status(400).json({ message: 'Name cannot contain numbers.' });
     }
-
-    // Validate email — checks format, typo detection, disposable domains, and MX records
-    const emailCheck = await validateEmail(email);
-    if (!emailCheck.valid) {
-      return res.status(400).json({ message: emailCheck.reason });
+    if (!/^[a-zA-Z\s\u1200-\u137F]+$/.test(name)) {
+      return res.status(400).json({ message: 'Name can only contain letters and spaces.' });
     }
 
-    // Require OTP verification before account creation (email or phone)
-    // Check email OTP first; if not found, check phone OTP (SMS verification path)
-    const emailKey = email.toLowerCase();
-    const phoneKey = phone_number ? phone_number.replace(/\s/g, '') : null;
+    // Validation: Email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (!email || !emailRegex.test(email.toLowerCase().trim())) {
+      return res.status(400).json({ message: 'Please enter a valid email address.' });
+    }
 
-    let otpRecord = otpStore.get(emailKey);
-    let usedKey = emailKey;
+    // Check if user exists
+    const existingUser = await User.findOne({ where: { email: email.toLowerCase().trim() } });
+    if (existingUser) {
+      return res.status(400).json({ message: 'An account with this email already exists.' });
+    }
 
-    if (!otpRecord || !otpRecord.verified) {
-      // Try phone key as fallback (SMS verification)
-      if (phoneKey) {
-        otpRecord = otpStore.get(phoneKey);
-        usedKey = phoneKey;
+    // Validation: Password
+    if (!password || password.length < 8) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters long.' });
+    }
+    if (!/(?=.*[a-z])/.test(password)) {
+      return res.status(400).json({ message: 'Password must contain at least one lowercase letter.' });
+    }
+    if (!/(?=.*[A-Z])/.test(password)) {
+      return res.status(400).json({ message: 'Password must contain at least one uppercase letter.' });
+    }
+    if (!/(?=.*\d)/.test(password)) {
+      return res.status(400).json({ message: 'Password must contain at least one number.' });
+    }
+
+    // Validation: Phone number (if provided)
+    if (phone_number) {
+      const phoneRegex = /^\+251[79]\d{8}$/;
+      if (!phoneRegex.test(phone_number.replace(/\s/g, ''))) {
+        return res.status(400).json({ message: 'Please enter a valid Ethiopian phone number (e.g., +251911234567).' });
+      }
+      
+      // Check if phone number already exists
+      const existingPhone = await User.findOne({ where: { phone_number: phone_number.replace(/\s/g, '') } });
+      if (existingPhone) {
+        return res.status(400).json({ message: 'An account with this phone number already exists.' });
       }
     }
 
-    if (!otpRecord || !otpRecord.verified) {
-      return res.status(400).json({ message: 'Identity must be verified before registering. Please complete the verification step.' });
-    }
-    otpStore.delete(usedKey);
-
-    if (!password || password.length < 8) {
-      return res.status(400).json({ message: 'Password must be at least 8 characters long.' });
+    // Validation: Age (if provided)
+    if (age) {
+      const ageNum = parseInt(age);
+      if (isNaN(ageNum) || ageNum < 1 || ageNum > 150) {
+        return res.status(400).json({ message: 'Please enter a valid age between 1 and 150.' });
+      }
     }
 
     // Validate role to prevent admin registration on public endpoint
@@ -199,19 +139,48 @@ exports.register = async (req, res) => {
       return res.status(403).json({ message: 'Registration as admin is not allowed.' });
     }
 
+    // Doctor-specific validations
     if (userRole === 'doctor') {
       if (!req.files || !req.files['document'] || !req.files['selfie'] || !req.files['id_document'] || !req.files['degree_document']) {
-        return res.status(400).json({ message: 'License Document, Selfie, National ID, and Degree Document are required for doctors.' });
+        const errMsg = 'License Document, Selfie, National ID, and Degree Document are required for doctors.';
+        return res.status(400).json({ message: errMsg, errors: { document: errMsg, selfie: errMsg, id_document: errMsg, degree_document: errMsg } });
       }
-      if (!license_number || !license_issuing_authority || !license_expiry_date || !degree || !university_name || !graduation_year) {
-        return res.status(400).json({ message: 'All professional and educational fields are required for doctors.' });
+      if (!license_number || license_number.trim().length === 0) {
+        return res.status(400).json({ message: 'License number is required for doctors.' });
       }
-    }
-
-    // Check if user exists
-    const existingUser = await User.findOne({ where: { email } });
-    if (existingUser) {
-      return res.status(400).json({ message: 'User already exists' });
+      if (!license_issuing_authority || license_issuing_authority.trim().length === 0) {
+        return res.status(400).json({ message: 'License issuing authority is required for doctors.' });
+      }
+      if (!license_expiry_date) {
+        return res.status(400).json({ message: 'License expiry date is required for doctors.' });
+      }
+      // Validate license expiry date is in the future
+      if (new Date(license_expiry_date) <= new Date()) {
+        return res.status(400).json({ message: 'License expiry date must be in the future.' });
+      }
+      if (!degree || degree.trim().length === 0) {
+        return res.status(400).json({ message: 'Degree is required for doctors.' });
+      }
+      if (!university_name || university_name.trim().length === 0) {
+        return res.status(400).json({ message: 'University name is required for doctors.' });
+      }
+      if (!graduation_year) {
+        return res.status(400).json({ message: 'Graduation year is required for doctors.' });
+      }
+      const gradYear = parseInt(graduation_year);
+      const currentYear = new Date().getFullYear();
+      if (isNaN(gradYear) || gradYear < 1950 || gradYear > currentYear) {
+        return res.status(400).json({ message: `Graduation year must be between 1950 and ${currentYear}.` });
+      }
+      if (!specialty || specialty.trim().length === 0) {
+        return res.status(400).json({ message: 'Medical specialty is required for doctors.' });
+      }
+      if (experience_years) {
+        const expYears = parseInt(experience_years);
+        if (isNaN(expYears) || expYears < 0 || expYears > 70) {
+          return res.status(400).json({ message: 'Experience years must be between 0 and 70.' });
+        }
+      }
     }
 
     // Hash password
@@ -220,25 +189,25 @@ exports.register = async (req, res) => {
 
     // Create user
     const userPayload = {
-      name,
-      email,
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
       password: hashedPassword,
       role: userRole,
-      phone_number: phone_number || null,
-      age: age || null,
+      phone_number: phone_number ? phone_number.replace(/\s/g, '') : null,
+      age: age ? parseInt(age) : null,
       sex: sex || null,
     };
 
     if (userRole === 'doctor') {
-      userPayload.license_number = license_number;
-      userPayload.license_issuing_authority = license_issuing_authority;
+      userPayload.license_number = license_number.trim();
+      userPayload.license_issuing_authority = license_issuing_authority.trim();
       userPayload.license_expiry_date = license_expiry_date;
-      userPayload.degree = degree;
-      userPayload.university_name = university_name;
-      userPayload.graduation_year = graduation_year;
-      userPayload.experience_years = experience_years || null;
-      userPayload.current_workplace = current_workplace || null;
-      userPayload.specialty = specialty || null;
+      userPayload.degree = degree.trim();
+      userPayload.university_name = university_name.trim();
+      userPayload.graduation_year = parseInt(graduation_year);
+      userPayload.experience_years = experience_years ? parseInt(experience_years) : null;
+      userPayload.current_workplace = current_workplace ? current_workplace.trim() : null;
+      userPayload.specialty = specialty.trim();
       
       userPayload.verification_document = req.files['document'][0].path;
       userPayload.selfie_document = req.files['selfie'][0].path;
@@ -266,7 +235,8 @@ exports.register = async (req, res) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ message: 'Server error during registration' });
+    const msg = error?.message || 'Server error during registration';
+    res.status(500).json({ message: msg });
   }
 };
 

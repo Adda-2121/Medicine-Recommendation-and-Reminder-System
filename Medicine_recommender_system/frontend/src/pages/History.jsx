@@ -8,6 +8,7 @@ import {
   Pill, ClipboardList, Stethoscope, ChevronDown, CheckCircle, AlertCircle, Trash2, MoreHorizontal
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { feedbackSchema, formatZodErrors } from '../utils/validationSchemas';
 
 //  Shared helpers 
 
@@ -446,7 +447,7 @@ const DoctorTreatmentPlansTab = ({ consultations, searchTerm, filterDate }) => {
 
 //  Feedback Modal (patient only) 
 
-const FeedbackModal = ({ feedbackModal, rating, setRating, comment, setComment, isSubmitting, onClose, onSubmit }) => {
+const FeedbackModal = ({ feedbackModal, rating, setRating, comment, setComment, isSubmitting, feedbackFieldErrors, onClose, onSubmit }) => {
   const { t } = useTranslation();
   if (!feedbackModal.isOpen) return null;
   return (
@@ -474,6 +475,9 @@ const FeedbackModal = ({ feedbackModal, rating, setRating, comment, setComment, 
             </button>
           ))}
         </div>
+        {feedbackFieldErrors.rating && (
+          <p className="text-center text-red-500 text-xs mb-2">{feedbackFieldErrors.rating}</p>
+        )}
         <p className="text-center text-xs text-slate-400 mb-5 h-4">
           {rating === 1 && t('history.feedback.poor')}{rating === 2 && t('history.feedback.fair')}{rating === 3 && t('history.feedback.good')}{rating === 4 && t('history.feedback.veryGood')}{rating === 5 && t('history.feedback.excellent')}
         </p>
@@ -484,11 +488,14 @@ const FeedbackModal = ({ feedbackModal, rating, setRating, comment, setComment, 
         <textarea
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          className="w-full border border-slate-300 rounded-lg p-3 mb-5 min-h-[90px] resize-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
+          className={`w-full border ${feedbackFieldErrors.comment ? 'border-red-500 bg-red-50' : 'border-slate-300'} rounded-lg p-3 mb-1 min-h-[90px] resize-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm`}
           placeholder={t('history.feedback.commentPlaceholder')}
         />
+        {feedbackFieldErrors.comment && (
+          <p className="text-red-500 text-xs mb-3">{feedbackFieldErrors.comment}</p>
+        )}
 
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-end gap-3 mt-4">
           <button
             onClick={onClose}
             className="px-4 py-2 text-slate-600 hover:bg-slate-100 font-medium rounded-lg transition text-sm"
@@ -497,7 +504,7 @@ const FeedbackModal = ({ feedbackModal, rating, setRating, comment, setComment, 
           </button>
           <button
             onClick={onSubmit}
-            disabled={isSubmitting || rating === 0}
+            disabled={isSubmitting}
             className="px-6 py-2 bg-primary-600 text-white font-bold rounded-lg hover:bg-primary-700 disabled:opacity-50 transition text-sm flex items-center gap-2"
           >
             <Star size={14} className={rating > 0 ? 'fill-amber-300 text-amber-300' : 'text-white'} />
@@ -540,6 +547,7 @@ const History = () => {
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [feedbackFieldErrors, setFeedbackFieldErrors] = useState({});
 
   // Clear history state (patient only)
   const [menuOpen, setMenuOpen] = useState(false);
@@ -598,15 +606,32 @@ const History = () => {
     setFeedbackModal({ isOpen: true, serviceId: record.id, type: 'consultation', doctorName: record.Doctor?.name || 'Doctor' });
     setRating(0);
     setComment('');
+    setFeedbackFieldErrors({});
   };
 
   const submitFeedback = async () => {
-    if (rating === 0) return toast.error('Please select a rating');
+    setFeedbackFieldErrors({});
+    
+    // Validate using feedbackSchema
+    const result = feedbackSchema.safeParse({ rating, comment: comment || undefined });
+    if (!result.success) {
+      const errors = formatZodErrors(result.error);
+      setFeedbackFieldErrors(errors);
+      
+      // Show first error as toast
+      const firstError = Object.values(errors)[0];
+      if (firstError) {
+        toast.error(firstError);
+      }
+      return;
+    }
+    
     setIsSubmitting(true);
     try {
       await api.post('/testimonials', { service_id: feedbackModal.serviceId, service_type: feedbackModal.type, rating, comment });
       toast.success('Feedback submitted successfully!');
       setFeedbackModal({ isOpen: false, serviceId: null, type: null, doctorName: '' });
+      setFeedbackFieldErrors({});
       // Refresh testimonials
       const res = await api.get('/testimonials/my').catch(() => ({ data: [] }));
       setMyTestimonials(res.data);
@@ -821,7 +846,8 @@ const History = () => {
         comment={comment}
         setComment={setComment}
         isSubmitting={isSubmitting}
-        onClose={() => setFeedbackModal({ isOpen: false, serviceId: null, type: null, doctorName: '' })}
+        feedbackFieldErrors={feedbackFieldErrors}
+        onClose={() => { setFeedbackModal({ isOpen: false, serviceId: null, type: null, doctorName: '' }); setFeedbackFieldErrors({}); }}
         onSubmit={submitFeedback}
       />
 

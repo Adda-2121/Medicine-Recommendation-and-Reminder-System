@@ -51,6 +51,11 @@ const Referral = sequelize.define('Referral', {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  referral_reason: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    comment: 'Short reason for referral (e.g. suspected cardiac issue)',
+  },
   referral_note: {
     type: DataTypes.TEXT,
     allowNull: false,

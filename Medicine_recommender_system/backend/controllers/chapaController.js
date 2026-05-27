@@ -11,7 +11,7 @@ const CHAPA_AUTH = `Bearer ${CHAPA_SECRET_KEY}`;
 exports.initializePayment = async (req, res) => {
   try {
     const { service_request_id } = req.body;
-    
+
     if (!service_request_id) {
       return res.status(400).json({ message: 'service_request_id is required' });
     }
@@ -84,9 +84,9 @@ exports.initializePayment = async (req, res) => {
       serviceReq.chapa_tx_ref = tx_ref;
       await serviceReq.save();
 
-      return res.status(200).json({ 
-        message: 'Payment initialized successfully', 
-        checkout_url: response.data.data.checkout_url 
+      return res.status(200).json({
+        message: 'Payment initialized successfully',
+        checkout_url: response.data.data.checkout_url
       });
     } else {
       console.error('Chapa initialization returned non-success:', response.data);
@@ -94,7 +94,7 @@ exports.initializePayment = async (req, res) => {
     }
   } catch (error) {
     console.error('Chapa init error:', error.response?.data || error.message);
-    return res.status(500).json({ 
+    return res.status(500).json({
       message: 'Server error initializing payment',
       error: error.response?.data || error.message
     });
@@ -116,7 +116,7 @@ exports.verifyPayment = async (req, res) => {
       if (tx_ref.startsWith('tx-cons-')) {
         // Handle consultation payment
         const payment = await Payment.findOne({ where: { chapa_tx_ref: tx_ref } });
-        
+
         if (!payment) {
           return res.status(404).json({ message: 'Payment record not found' });
         }
@@ -128,7 +128,7 @@ exports.verifyPayment = async (req, res) => {
           expiresAt.setDate(expiresAt.getDate() + 7);
           payment.expires_at = expiresAt;
           await payment.save();
-          
+
           // Update Referral status if applicable
           try {
             const Referral = require('../models/Referral');
@@ -148,13 +148,18 @@ exports.verifyPayment = async (req, res) => {
           if (consultationController.triggerAutoAssignment) {
             consultationController.triggerAutoAssignment();
           }
+
+          // NEW: Activate specialist consultation if this was a referral
+          if (consultationController.activateSpecialistConsultation) {
+            await consultationController.activateSpecialistConsultation(payment.consultation_id);
+          }
         }
 
         return res.status(200).json({ message: 'Payment verified successfully', payment });
       } else {
         // Handle service request payment
         const serviceReq = await ServiceRequest.findOne({ where: { chapa_tx_ref: tx_ref } });
-        
+
         if (!serviceReq) {
           return res.status(404).json({ message: 'Service request associated with this transaction not found' });
         }
@@ -181,7 +186,7 @@ exports.verifyPayment = async (req, res) => {
 exports.initializeConsultationPayment = async (req, res) => {
   try {
     const { payment_id } = req.body;
-    
+
     if (!payment_id) {
       return res.status(400).json({ message: 'payment_id is required' });
     }
@@ -214,7 +219,7 @@ exports.initializeConsultationPayment = async (req, res) => {
 
     // Generate unique transaction reference (must be <= 50 chars)
     const tx_ref = `tx-cons-${payment.id.substring(0, 8)}-${Date.now()}`;
-    
+
     // Save tx_ref to payment
     payment.chapa_tx_ref = tx_ref;
     await payment.save();
@@ -235,7 +240,7 @@ exports.initializeConsultationPayment = async (req, res) => {
       },
       meta: {
         invoices: [
-          { key: "Service", value: "Consultation 1-Week Subscription" },
+          { key: "Service", value: "Consultation Subscription" },
           { key: "Price", value: `${price} ETB` }
         ]
       }
@@ -252,9 +257,9 @@ exports.initializeConsultationPayment = async (req, res) => {
     });
 
     if (response.data && response.data.status === 'success') {
-      return res.status(200).json({ 
-        message: 'Payment initialized successfully', 
-        checkout_url: response.data.data.checkout_url 
+      return res.status(200).json({
+        message: 'Payment initialized successfully',
+        checkout_url: response.data.data.checkout_url
       });
     } else {
       console.error('Chapa initialization returned non-success:', response.data);
@@ -262,7 +267,7 @@ exports.initializeConsultationPayment = async (req, res) => {
     }
   } catch (error) {
     console.error('Chapa init consultation error:', error.response?.data || error.message);
-    return res.status(500).json({ 
+    return res.status(500).json({
       message: 'Server error initializing payment',
       error: error.response?.data || error.message
     });
@@ -400,7 +405,7 @@ exports.directCharge = async (req, res) => {
     if (response.data && response.data.status === 'success') {
       serviceReq.chapa_tx_ref = tx_ref;
       await serviceReq.save();
-      
+
       // Chapa returns success but often message="Charge attempted, OTP sent"
       return res.status(200).json({
         message: 'OTP sent to your phone',
@@ -413,7 +418,7 @@ exports.directCharge = async (req, res) => {
     }
   } catch (error) {
     console.error('Chapa charge error:', error.response?.data || error.message);
-    return res.status(500).json({ 
+    return res.status(500).json({
       message: 'Server error initiating direct charge',
       error: error.response?.data || error.message
     });
@@ -465,7 +470,7 @@ exports.validateOtp = async (req, res) => {
     }
   } catch (error) {
     console.error('Chapa OTP error:', error.response?.data || error.message);
-    return res.status(500).json({ 
+    return res.status(500).json({
       message: 'Server error validating OTP',
       error: error.response?.data || error.message
     });

@@ -22,6 +22,7 @@ import FindDoctor from './pages/FindDoctor';
 import { PublicLayout, Landing, Features, About, Contact } from './pages/PublicPages';
 import { initializePushNotifications } from './services/notificationService';
 import { Toaster } from 'react-hot-toast';
+import ProfessionalLanguageSwitcher from './components/common/ProfessionalLanguageSwitcher';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -46,8 +47,14 @@ const DashboardLayout = ({ children }) => {
       <Sidebar />
       <ReminderNotification />
       <div className="flex-1 flex flex-col overflow-hidden lg:ml-64">
-        {/* Mobile Header (Hidden on generic desktop view for now as Sidebar manages it) */}
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-50 p-4 md:p-6">
+        {/* Top Header Utilities */}
+        <header className="h-16 flex items-center justify-end px-8 bg-transparent pointer-events-none absolute top-0 right-0 left-0 lg:left-64 z-30">
+          <div className="pointer-events-auto">
+            <ProfessionalLanguageSwitcher />
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-50 p-4 md:p-6 pt-16 lg:pt-16">
           {children}
         </main>
       </div>

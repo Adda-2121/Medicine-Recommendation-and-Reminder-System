@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   requestService,
   getPendingRequests,
+  acceptRequest,
   updateRequestStatus,
   getConsultationRequests,
   getPatientQueue
@@ -17,6 +18,9 @@ router.route('/')
 
 router.get('/queue', protect, getPatientQueue);
 router.get('/consultation/:consultationId', protect, getConsultationRequests);
+
+// Accept/open a request — marks active and shifts queue positions
+router.put('/:id/accept', protect, acceptRequest);
 
 router.route('/:id')
   .put(protect, upload.single('result_file'), updateRequestStatus);

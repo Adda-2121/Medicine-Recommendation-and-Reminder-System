@@ -9,11 +9,14 @@ import {
   MessageSquare,
   Bell,
   History,
-  UserCircle,
-  Star
+  Star,
+  CreditCard,
+  Stethoscope,
+  MapPin,
+  ArrowRight,
+  UserRoundPlus
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import LanguageSwitcher from '../components/common/LanguageSwitcher';
 
 const SOCKET_URL = import.meta.env.VITE_API_URL
   ? import.meta.env.VITE_API_URL.replace('/api', '')
@@ -57,24 +60,12 @@ const PatientDashboard = () => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Top Navbar / Header Area (Specific to the dashboard content area) */}
-      <div className="flex justify-between items-center mb-8 pb-4 border-b border-slate-200">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800 tracking-tight">{t('patientDashboard.welcome', { name: user?.name || t('patientDashboard.fallbackName') })}</h1>
-          <p className="text-slate-500 mt-1 text-sm md:text-base">{t('patientDashboard.overview')}</p>
-        </div>
-        <div className="flex items-center space-x-4">
-          <LanguageSwitcher />
-          <button className="p-2 text-slate-400 hover:text-primary-600 bg-white rounded-full border border-slate-200 shadow-sm relative transition-colors">
-            <Bell size={20} />
-            <span className="absolute top-0 right-0 h-2.5 w-2.5 bg-red-500 rounded-full border-2 border-white"></span>
-          </button>
-          <div className="flex items-center space-x-2 bg-white px-3 py-1.5 rounded-full border border-slate-200 shadow-sm cursor-pointer hover:bg-slate-50 transition">
-            <UserCircle size={24} className="text-slate-400" />
-            <span className="font-medium text-sm text-slate-700 hidden sm:block">{t('patientDashboard.myProfile')}</span>
+        <div className="flex justify-between items-center mb-8 pb-4 border-b border-slate-200">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-800 tracking-tight">{t('patientDashboard.welcome', { name: user?.name || t('patientDashboard.fallbackName') })}</h1>
+            <p className="text-slate-500 mt-1 text-sm md:text-base">{t('patientDashboard.overview')}</p>
           </div>
         </div>
-      </div>
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-pulse">
@@ -133,10 +124,112 @@ const PatientDashboard = () => {
             </div>
           </div>
 
+          <PatientReferralPanel />
           <PatientServiceQueue />
           <PendingFeedback />
         </>
       )}
+    </div>
+  );
+};
+
+// ─── Active specialist referrals (GP → specialist workflow) ─────────────────
+const PatientReferralPanel = () => {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [referrals, setReferrals] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await api.get('/consultations/my-referrals');
+        setReferrals(res.data || []);
+      } catch (err) {
+        console.error('Failed to load referrals', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  if (loading || referrals.length === 0) return null;
+
+  const paymentLabel = (ref) => {
+    const payStatus = ref.SpecialistConsultation?.Payment?.status;
+    if (payStatus === 'verified') return t('patientDashboard.referral.paymentSuccess');
+    return t('patientDashboard.referral.paymentRequired');
+  };
+
+  const consultLabel = (ref) => {
+    const st = ref.SpecialistConsultation?.status;
+    if (st === 'in_progress' || st === 'active' || st === 'assigned') {
+      return t('patientDashboard.referral.activeConsultation');
+    }
+    return st || ref.status;
+  };
+
+  return (
+    <div className="mb-8 bg-white rounded-xl shadow-sm border border-violet-200 overflow-hidden">
+      <div className="px-6 py-4 border-b border-violet-100 bg-violet-50 flex items-center gap-2">
+        <UserRoundPlus size={20} className="text-violet-600" />
+        <h2 className="text-lg font-bold text-slate-800">{t('patientDashboard.referral.title')}</h2>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {referrals.map(ref => {
+          const consultId = ref.SpecialistConsultation?.id;
+          const paid = ref.SpecialistConsultation?.Payment?.status === 'verified';
+          const room = ref.Specialist?.room_number || ref.Specialist?.work_location;
+
+          return (
+            <div key={ref.id} className="p-6 flex flex-col md:flex-row md:items-center gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-1">
+                  {ref.specialty}
+                </p>
+                <p className="font-bold text-slate-800 text-lg">
+                  {t('patientDashboard.referral.specialist')}: Dr. {ref.Specialist?.name || '—'}
+                </p>
+                {ref.referral_reason && (
+                  <p className="text-sm text-slate-600 mt-1">{ref.referral_reason}</p>
+                )}
+                <div className="flex flex-wrap gap-3 mt-3 text-sm">
+                  {room && (
+                    <span className="inline-flex items-center gap-1 text-slate-600 bg-slate-50 px-2 py-1 rounded-md">
+                      <MapPin size={14} /> {t('patientDashboard.referral.room')}: {room}
+                    </span>
+                  )}
+                  <span className="px-2 py-1 rounded-md bg-slate-100 text-slate-700">
+                    {t('patientDashboard.referral.consultationStatus')}: {consultLabel(ref)}
+                  </span>
+                  <span className={`px-2 py-1 rounded-md ${paid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+                    {t('patientDashboard.referral.paymentStatus')}: {paymentLabel(ref)}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => consultId && navigate(`/consultations?id=${consultId}`)}
+                className="shrink-0 inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg font-bold text-sm text-white bg-violet-600 hover:bg-violet-700 transition"
+              >
+                {paid ? (
+                  <>
+                    <MessageSquare size={16} />
+                    {t('patientDashboard.referral.openChat')}
+                  </>
+                ) : (
+                  <>
+                    <CreditCard size={16} />
+                    {t('patientDashboard.referral.payNow')}
+                  </>
+                )}
+                <ArrowRight size={16} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };
@@ -386,8 +479,8 @@ const PatientServiceQueue = () => {
             <div>
               <div className="flex items-center space-x-3 mb-2">
                 <span className="font-bold text-slate-800 text-lg capitalize">{test.ServiceItem?.name || 'Service'}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${test.status === 'completed' ? 'bg-purple-100 text-purple-800' : test.status === 'in_progress' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-700'}`}>
-                  {test.status === 'completed' ? 'Completed' : (test.status === 'in_progress' || test.status === 'pending') ? 'Pending' : test.status}
+                <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${test.status === 'completed' ? 'bg-purple-100 text-purple-800' : test.queue_status === 'active' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-700'}`}>
+                  {test.status === 'completed' ? 'Completed' : test.queue_status === 'active' ? 'Being Processed' : 'Waiting in Queue'}
                 </span>
                 {test.payment_status === 'paid' ? (
                   <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800">Paid</span>
@@ -405,9 +498,24 @@ const PatientServiceQueue = () => {
 
             <div className="flex flex-col items-end md:items-center">
               {test.payment_status === 'paid' && test.status !== 'completed' && test.specialist_id ? (
-                <div className="bg-white border flex flex-col items-center justify-center border-emerald-200 rounded-lg p-3 text-center mb-3 min-w-[140px] shadow-sm">
-                  <span className="text-sm text-slate-500 font-medium">Your Queue Position</span>
-                  <span className="text-3xl font-bold text-emerald-600">#{test.queue_position}</span>
+                <div className="bg-white border flex flex-col items-center justify-center border-emerald-200 rounded-lg p-3 text-center mb-3 min-w-[160px] shadow-sm">
+                  {test.queue_status === 'active' ? (
+                    <>
+                      <span className="text-xs font-bold text-blue-600 uppercase tracking-wide mb-1">Being Processed</span>
+                      <span className="text-2xl font-bold text-blue-600">🔬 Active</span>
+                      <span className="text-xs text-slate-500 mt-1">Your turn now</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs text-slate-500 font-medium">Queue Number</span>
+                      <span className="text-3xl font-bold text-emerald-600">#{test.queue_number ?? test.queue_position}</span>
+                      {test.patients_ahead > 0 ? (
+                        <span className="text-xs text-slate-500 mt-1">{test.patients_ahead} patient{test.patients_ahead !== 1 ? 's' : ''} ahead</span>
+                      ) : (
+                        <span className="text-xs text-emerald-600 font-semibold mt-1">You're next!</span>
+                      )}
+                    </>
+                  )}
                 </div>
               ) : test.payment_status !== 'paid' && test.status !== 'completed' ? (
                 <div className="bg-rose-50 border flex flex-col items-center justify-center border-rose-200 rounded-lg p-3 text-center mb-3 min-w-[140px]">

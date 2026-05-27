@@ -31,12 +31,63 @@ import {
   Square,
   Phone,
   Pause,
-  Play
+  Play,
+  Check,
+  CheckCheck,
+  ClipboardList,
+  Loader2,
+  FlaskConical,
+  Microscope,
+  Pill,
+  UserRoundPlus
 } from 'lucide-react';
 import { JitsiMeeting } from '@jitsi/react-sdk';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
 import ConfirmationModal from '../components/common/ConfirmationModal';
+import { referralSchema, feedbackSchema, formatZodErrors } from '../utils/validationSchemas';
+import { REFERRAL_SPECIALIST_TYPES, getReferEligibility, isGpDoctor } from '../utils/referralHelpers';
+
+/** Compact icon action for the consultation header toolbar */
+const ConsultationToolbarButton = ({
+  icon: Icon,
+  label,
+  onClick,
+  disabled = false,
+  variant = 'default',
+  active = false,
+}) => {
+  const palette = {
+    video: active
+      ? 'bg-emerald-600 text-white shadow-sm'
+      : 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700',
+    refer: active
+      ? 'bg-violet-600 text-white shadow-sm'
+      : 'text-violet-600 hover:bg-violet-50 hover:text-violet-700',
+    lab: active
+      ? 'bg-sky-600 text-white shadow-sm'
+      : 'text-sky-600 hover:bg-sky-50 hover:text-sky-700',
+    rx: active
+      ? 'bg-purple-600 text-white shadow-sm'
+      : 'text-purple-600 hover:bg-purple-50 hover:text-purple-700',
+    info: 'text-slate-500 hover:bg-slate-100 hover:text-slate-700',
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-all duration-200
+        disabled:cursor-not-allowed disabled:opacity-35
+        ${palette[variant] || palette.info}`}
+    >
+      <Icon size={18} strokeWidth={2.25} />
+    </button>
+  );
+};
 
 const Consultations = () => {
   const { t } = useTranslation();
@@ -116,30 +167,81 @@ const Consultations = () => {
   const [counselingNotes, setCounselingNotes] = useState(['']);
   const [isPrescribing, setIsPrescribing] = useState(false);
   
+  // Countdown timer for auto-closure
+  const [timeLeft, setTimeLeft] = useState('');
+  useEffect(() => {
+    const activeConsultation = consultations.find(c => c.id === activeChatId);
+    if (activeConsultation?.status === 'prescription_submitted' && activeConsultation?.closing_at) {
+      const updateTimer = () => {
+        const diff = new Date(activeConsultation.closing_at).getTime() - new Date().getTime();
+        if (diff <= 0) {
+          setTimeLeft('Expired');
+          return;
+        }
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const secs = Math.floor((diff % (1000 * 60)) / 1000);
+        setTimeLeft(`${hours}h ${mins}m ${secs}s`);
+      };
+      
+      updateTimer();
+      const interval = setInterval(updateTimer, 1000);
+      return () => clearInterval(interval);
+    } else {
+      setTimeLeft('');
+    }
+  }, [activeChatId, consultations]);
+  
   const [modalConfig, setModalConfig] = useState({ isOpen: false, reqId: null });
 
   // Consultation feedback state (patient submitting after consultation completed)
   const [consultFeedback, setConsultFeedback] = useState({ isOpen: false, rating: 0, comment: '', submitting: false });
   const [myTestimonials, setMyTestimonials] = useState([]);
+  const [consultFeedbackErrors, setConsultFeedbackErrors] = useState({});
+
+  // Professional Referral Workflow State
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [redirectMessage, setRedirectMessage] = useState('');
+
+  // GP → specialist referral (in-chat)
+  const [referralModalOpen, setReferralModalOpen] = useState(false);
+  const [referralForm, setReferralForm] = useState({
+    target_specialty: '',
+    referral_reason: '',
+    referral_notes: '',
+    urgency: 'routine',
+  });
+  const [referralLoading, setReferralLoading] = useState(false);
+  const [referralFieldErrors, setReferralFieldErrors] = useState({});
 
   useEffect(() => {
-    // Check if URL has ?action=new
     const queryParams = new URLSearchParams(location.search);
+
+    const consultId = queryParams.get('id');
+    if (consultId) {
+      setActiveChatId(consultId);
+      setShowNewForm(false);
+    }
+
     if (queryParams.get('action') === 'new') {
       setShowNewForm(true);
-      // Clean up URL
       navigate('/consultations', { replace: true });
     }
 
-    // Check for Chapa payment return
     const tx_ref = queryParams.get('payment_ref');
     if (tx_ref) {
       setIsSubmittingPayment(true);
       api.get(`/chapa/verify/${tx_ref}`)
         .then(res => {
           toast.success('Payment Verified Successfully!');
-          navigate('/consultations', { replace: true });
-          fetchConsultations(); // Refresh to see the assigned doctor immediately
+          const paidConsultationId = res.data?.payment?.consultation_id;
+          if (paidConsultationId) {
+            setActiveChatId(paidConsultationId);
+            navigate(`/consultations?id=${paidConsultationId}`, { replace: true });
+          } else {
+            navigate('/consultations', { replace: true });
+          }
+          fetchConsultations();
         })
         .catch(err => {
           console.error(err);
@@ -151,6 +253,57 @@ const Consultations = () => {
         });
     }
   }, [location, navigate]);
+
+  // Global socket room for user-specific events (e.g. referrals, redirects)
+  useEffect(() => {
+    if (!user?.id) return;
+    socket.emit('join_user_room', user.id);
+
+    const handleReferral = (data) => {
+      toast.success(t('consultations.referralCreated', { specialty: data.specialty }));
+      fetchConsultations();
+      if (data.new_consultation_id) {
+        setActiveChatId(data.new_consultation_id);
+        navigate(`/consultations?id=${data.new_consultation_id}`);
+      }
+    };
+
+    const handleRedirect = (data) => {
+      const targetId = data.consultation_id || data.new_consultation_id;
+      if (!targetId) return;
+      setIsRedirecting(true);
+      setRedirectMessage(t('consultations.redirectingToSpecialist'));
+      setTimeout(() => {
+        setActiveChatId(targetId);
+        navigate(`/consultations?id=${targetId}`);
+        fetchConsultations();
+        setIsRedirecting(false);
+        setRedirectMessage('');
+      }, 1500);
+    };
+
+    // Immediately lock the UI when a consultation is referred or closed
+    const handleCaseStatusUpdated = (data) => {
+      if (data.status === 'referred' || data.status === 'completed') {
+        fetchConsultations();
+        // Close any open modals/forms that should not be active on a referred case
+        setShowServiceForm(false);
+        setShowPrescribeModal(false);
+        setIsVideoActive(false);
+        setReferralModalOpen(false);
+      }
+    };
+
+    socket.on('consultation_referred', handleReferral);
+    socket.on('payment_success_redirect', handleRedirect);
+    socket.on('case_status_updated', handleCaseStatusUpdated);
+
+    return () => {
+      socket.off('consultation_referred', handleReferral);
+      socket.off('payment_success_redirect', handleRedirect);
+      socket.off('case_status_updated', handleCaseStatusUpdated);
+    };
+  }, [user?.id, navigate, t]);
 
   useEffect(() => {
     fetchConsultations();
@@ -211,16 +364,10 @@ const Consultations = () => {
     if (activeChatId) {
       // 1. Fetch existing messages
       api.get(`/chat/${activeChatId}`).then(res => {
-        const formattedMsgs = res.data.map(m => ({
-          id: m.id,
-          sender: m.sender_id === user.id ? user.role : (user.role === 'patient' ? 'doctor' : 'patient'),
-          text: m.message,
-          attachment_url: m.attachment_url,
-          chat_type: m.chat_type || 'patient',
-          time: new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }));
+        const formattedMsgs = res.data.map(formatChatMessage);
         setMessages(formattedMsgs);
         scrollToBottom();
+        markMessagesSeen(activeChatId, activeChatType);
       }).catch(err => {
         console.error('Error fetching chat history:', err);
       });
@@ -245,17 +392,24 @@ const Consultations = () => {
       // 3. Listen for new messages
       const handleReceiveMessage = (msgData) => {
         if (msgData.consultation_id === activeChatId) {
-          const newMsg = {
-            id: msgData.id,
-            sender: msgData.sender_id === user.id ? user.role : (user.role === 'patient' ? 'doctor' : 'patient'),
-            text: msgData.message,
-            attachment_url: msgData.attachment_url,
-            chat_type: msgData.chat_type || 'patient',
-            time: new Date(msgData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          };
+          const newMsg = formatChatMessage(msgData);
           setMessages(prev => [...prev, newMsg]);
           setTimeout(scrollToBottom, 100);
+          if (msgData.sender_id !== user.id && (msgData.chat_type || 'patient') === activeChatType) {
+            markMessagesSeen(activeChatId, activeChatType);
+          }
         }
+      };
+
+      const handleMessagesSeen = (data) => {
+        if (data.consultation_id !== activeChatId) return;
+        if (data.chat_type && data.chat_type !== activeChatType) return;
+        const readAt = data.read_at ? new Date(data.read_at).toISOString() : new Date().toISOString();
+        setMessages(prev =>
+          prev.map(m =>
+            data.message_ids.includes(m.id) ? { ...m, read_at: readAt } : m
+          )
+        );
       };
 
       const handleIncomingCall = (data) => {
@@ -280,21 +434,74 @@ const Consultations = () => {
       };
 
       socket.on('receive_message', handleReceiveMessage);
+      socket.on('messages_seen', handleMessagesSeen);
       socket.on('incoming_video_call', handleIncomingCall);
       socket.on('video_call_ended', handleCallEnded);
       socket.on('messages_deleted', handleMessagesDeleted);
 
       return () => {
         socket.off('receive_message', handleReceiveMessage);
+        socket.off('messages_seen', handleMessagesSeen);
         socket.off('incoming_video_call', handleIncomingCall);
         socket.off('video_call_ended', handleCallEnded);
         socket.off('messages_deleted', handleMessagesDeleted);
       };
     }
-  }, [activeChatId, user.id, user.role]);
+  }, [activeChatId, user.id, user.role, activeChatType]);
+
+  // Mark messages seen when switching chat tab (patient vs lab/radiology)
+  useEffect(() => {
+    if (activeChatId) {
+      markMessagesSeen(activeChatId, activeChatType);
+    }
+  }, [activeChatId, activeChatType]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const formatChatMessage = (m) => ({
+    id: m.id,
+    sender_id: m.sender_id,
+    sender: m.sender_id === user.id ? user.role : (user.role === 'patient' ? 'doctor' : 'patient'),
+    text: m.message,
+    attachment_url: m.attachment_url,
+    chat_type: m.chat_type || 'patient',
+    read_at: m.read_at || null,
+    time: new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+  });
+
+  const handleReferSubmit = async (e) => {
+    e.preventDefault();
+    if (!activeChatId) return;
+    setReferralFieldErrors({});
+    const parsed = referralSchema.safeParse(referralForm);
+    if (!parsed.success) {
+      setReferralFieldErrors(formatZodErrors(parsed.error));
+      return;
+    }
+    setReferralLoading(true);
+    try {
+      await api.post(`/consultations/${activeChatId}/refer`, referralForm);
+      toast.success(t('consultations.referSuccess', { specialty: referralForm.target_specialty }));
+      setReferralModalOpen(false);
+      setReferralForm({ target_specialty: '', referral_reason: '', referral_notes: '', urgency: 'routine' });
+      fetchConsultations();
+    } catch (err) {
+      toast.error(err.response?.data?.message || t('consultations.referError'));
+    } finally {
+      setReferralLoading(false);
+    }
+  };
+
+  const markMessagesSeen = (consultationId, chatType) => {
+    if (!consultationId || !user?.id) return;
+    socket.emit('mark_messages_seen', {
+      consultation_id: consultationId,
+      viewer_id: user.id,
+      chat_type: chatType || 'patient',
+    });
+    api.post(`/chat/${consultationId}/seen`, { chat_type: chatType || 'patient' }).catch(() => {});
   };
 
   const handleStartVideoCall = () => {
@@ -473,6 +680,19 @@ const Consultations = () => {
 
   const handleSubmitConsultation = async (e) => {
     e.preventDefault();
+    
+    // Validate symptoms description
+    if (!newConsultation.symptoms_description || newConsultation.symptoms_description.trim().length < 10) {
+      toast.error('Please provide at least 10 characters describing your symptoms.');
+      return;
+    }
+    
+    // Validate reason is selected
+    if (!newConsultation.reason || newConsultation.reason.trim().length === 0) {
+      toast.error('Please select a reason for your visit.');
+      return;
+    }
+    
     try {
       const res = await api.post('/consultations', newConsultation);
       setShowNewForm(false);
@@ -490,13 +710,23 @@ const Consultations = () => {
       toast.success('Consultation requested successfully!');
     } catch (err) {
       console.error(err);
-      toast.error('Failed to request consultation.');
+      toast.error(err.response?.data?.message || 'Failed to request consultation.');
     }
   };
 
   const handleServiceRequestSubmit = async (e) => {
     e.preventDefault();
-    if (!activeChatId) return;
+    if (!activeChatId) {
+      toast.error('No active consultation selected.');
+      return;
+    }
+    
+    // Validate service selection
+    if (!serviceRequestForm.service_item_id || serviceRequestForm.service_item_id === '') {
+      toast.error('Please select a service from the list.');
+      return;
+    }
+    
     try {
       await api.post('/service-requests', {
         consultation_id: activeChatId,
@@ -536,7 +766,26 @@ const Consultations = () => {
   };
 
   const handleSubmitConsultFeedback = async () => {
-    if (consultFeedback.rating === 0) return toast.error('Please select a rating');
+    setConsultFeedbackErrors({});
+    
+    // Validate using feedbackSchema
+    const result = feedbackSchema.safeParse({ 
+      rating: consultFeedback.rating, 
+      comment: consultFeedback.comment || undefined 
+    });
+    
+    if (!result.success) {
+      const errors = formatZodErrors(result.error);
+      setConsultFeedbackErrors(errors);
+      
+      // Show first error as toast
+      const firstError = Object.values(errors)[0];
+      if (firstError) {
+        toast.error(firstError);
+      }
+      return;
+    }
+    
     setConsultFeedback(prev => ({ ...prev, submitting: true }));
     try {
       await api.post('/testimonials', {
@@ -547,6 +796,7 @@ const Consultations = () => {
       });
       toast.success('Feedback submitted!');
       setConsultFeedback({ isOpen: false, rating: 0, comment: '', submitting: false });
+      setConsultFeedbackErrors({});
       fetchConsultations();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to submit feedback');
@@ -600,6 +850,9 @@ const Consultations = () => {
     }
   };
   const activeConsultation = consultations.find(c => c.id === activeChatId);
+  const referEligibility = activeConsultation
+    ? getReferEligibility(activeConsultation, user)
+    : { showButton: false, canSubmit: false, reason: '' };
 
   const handleSearchDrugs = async (query) => {
     setDrugSearchQuery(query);
@@ -729,9 +982,11 @@ const Consultations = () => {
                   <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full inline-block
                     ${c.status === 'completed' ? 'bg-green-100 text-green-700' :
                       c.status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                      c.status === 'referred' ? 'bg-violet-100 text-violet-700' :
+                      c.status === 'waiting_payment' ? 'bg-indigo-100 text-indigo-700 animate-pulse' :
                         'bg-amber-100 text-amber-700'}
                   `}>
-                    {c.status === 'completed' ? 'Completed' : (c.status === 'in_progress' ? 'Pending' : c.status.replace('_', ' '))}
+                    {t(`common.${c.status === 'waiting_payment' ? 'waitingPayment' : c.status}`)}
                   </span>
                 </div>
               </div>
@@ -918,56 +1173,122 @@ const Consultations = () => {
           /* CHAT INTERFACE */
           <>
             {/* Chat Header */}
-            <div className="h-16 flex items-center justify-between px-6 border-b border-slate-200 bg-white shrink-0 shadow-sm z-10">
-              <div className="flex items-center">
-                <div className="h-10 w-10 bg-gradient-to-tr from-primary-500 to-primary-700 rounded-full flex items-center justify-center text-white font-bold shadow-inner">
+            <div className="min-h-[4rem] flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-2.5 border-b border-slate-200/90 bg-gradient-to-r from-white via-slate-50/50 to-white shrink-0 shadow-sm z-10">
+              <div className="flex items-center min-w-0 flex-1">
+                <div className="h-11 w-11 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center text-white font-bold shadow-md ring-2 ring-white shrink-0">
                   {user.role === 'patient'
                     ? (activeConsultation.Doctor?.name?.charAt(0) || 'D')
                     : (activeConsultation.Patient?.name?.charAt(0) || 'P')}
                 </div>
-                <div className="ml-3">
-                  <h3 className="font-bold text-slate-800 leading-tight">
+                <div className="ml-3 min-w-0">
+                  <h3 className="font-bold text-slate-800 leading-tight truncate text-sm sm:text-base">
                     {user.role === 'patient'
                       ? (activeConsultation.Doctor ? `Dr. ${activeConsultation.Doctor.name}` : t('consultations.docAwaitingRole'))
                       : (activeConsultation.Patient?.name || t('consultations.patientRole'))}
                   </h3>
-                  <div className="flex items-center text-xs text-slate-500">
-                    <span className="w-2 h-2 bg-emerald-500 rounded-full mr-1.5 flex-shrink-0"></span>
+                  <div className="flex items-center text-xs text-slate-500 mt-0.5">
+                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5 shrink-0 ring-2 ring-emerald-100" />
                     {t('consultations.online')}
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center gap-2 shrink-0">
+                {activeConsultation.status === 'referred' && (
+                  <span className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 border border-violet-100 text-[10px] font-semibold uppercase tracking-wide">
+                    {t('consultations.referredReadOnly')}
+                  </span>
+                )}
+
                 {(!activeConsultation.Payment || activeConsultation.Payment.status === 'verified') && (
-                  <button
-                    onClick={handleStartVideoCall}
-                    className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded-full font-bold text-xs transition shadow-sm"
+                  <div
+                    className="inline-flex items-center gap-0.5 rounded-xl border border-slate-200/90 bg-white p-1 shadow-sm ring-1 ring-slate-900/[0.04]"
+                    role="toolbar"
+                    aria-label={t('consultations.clinicalActions')}
                   >
-                    <Video size={16} /> <span>{t('consultations.videoCall')}</span>
-                  </button>
+                    {/* All action buttons are disabled immediately after GP refers */}
+                    {(() => {
+                      const isReferred = activeConsultation.status === 'referred';
+                      const notVerified = ['doctor', 'laboratorist', 'radiologist'].includes(user.role) && user.verification_status !== 'verified';
+                      return (
+                        <>
+                          <ConsultationToolbarButton
+                            icon={Video}
+                            label={isReferred ? t('consultations.referredReadOnly') : t('consultations.videoCall')}
+                            variant="video"
+                            active={isVideoActive}
+                            onClick={handleStartVideoCall}
+                            disabled={isReferred || notVerified}
+                          />
+
+                          {referEligibility.showButton && (
+                            <>
+                              <span className="mx-0.5 h-6 w-px bg-slate-200" aria-hidden />
+                              <ConsultationToolbarButton
+                                icon={UserRoundPlus}
+                                label={referEligibility.canSubmit ? t('consultations.referToSpecialist') : referEligibility.reason}
+                                variant="refer"
+                                disabled={!referEligibility.canSubmit}
+                                onClick={() => referEligibility.canSubmit && setReferralModalOpen(true)}
+                              />
+                            </>
+                          )}
+
+                          {user.role === 'doctor' && !isReferred && (
+                            <>
+                              <span className="mx-0.5 h-6 w-px bg-slate-200" aria-hidden />
+                              <ConsultationToolbarButton
+                                icon={Microscope}
+                                label={t('consultations.requestLabRadiology')}
+                                variant="lab"
+                                active={showServiceForm}
+                                onClick={() => setShowServiceForm(true)}
+                                disabled={notVerified}
+                              />
+                              <ConsultationToolbarButton
+                                icon={Pill}
+                                label={t('consultations.prescribe')}
+                                variant="rx"
+                                active={showPrescribeModal}
+                                onClick={() => setShowPrescribeModal(true)}
+                                disabled={notVerified}
+                              />
+                            </>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
                 )}
-                {(!activeConsultation.Payment || activeConsultation.Payment.status === 'verified') && user.role === 'doctor' && (
-                  <>
-                    <button
-                      onClick={() => setShowServiceForm(true)}
-                      className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-full font-bold text-xs transition shadow-sm"
-                    >
-                      <Activity size={16} /> <span>Request Service</span>
-                    </button>
-                    <button
-                      onClick={() => setShowPrescribeModal(true)}
-                      className="flex items-center space-x-1.5 px-3 py-1.5 bg-purple-100 text-purple-700 hover:bg-purple-200 rounded-full font-bold text-xs transition shadow-sm"
-                    >
-                      <PlusCircle size={16} /> <span>Prescribe</span>
-                    </button>
-                  </>
-                )}
-                <button className="text-slate-400 hover:text-primary-600 p-2 rounded-full hover:bg-slate-100 transition" title="Consultation Details">
-                  <Info size={20} />
-                </button>
               </div>
             </div>
+            
+            {/* 24-hour Auto-closure Banner — only for prescription follow-up, never for referred consultations */}
+            {activeConsultation?.status === 'prescription_submitted' && activeConsultation?.closing_at && activeConsultation?.status !== 'referred' && (
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-200 px-6 py-2.5 flex items-center justify-between shrink-0 animate-in slide-in-from-top duration-300">
+                <div className="flex items-center">
+                  <div className="bg-amber-100 p-1.5 rounded-lg mr-3">
+                    <Clock size={16} className="text-amber-600 animate-pulse" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-amber-900 leading-none">
+                      {user.role === 'patient' ? "Prescription Received" : "Follow-up Period Active"}
+                    </p>
+                    <p className="text-[10px] text-amber-700 mt-1 font-medium italic">
+                      {user.role === 'patient' 
+                        ? "Please ask any questions you have now. This chat will close once the timer expires." 
+                        : "The patient can ask questions until the timer expires."}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end">
+                  <span className="text-[10px] font-extrabold text-amber-500 uppercase tracking-widest mb-1">Time Remaining</span>
+                  <div className="bg-white px-3 py-1 rounded-full border border-amber-200 shadow-sm">
+                    <span className="text-sm font-black font-mono text-amber-700">{timeLeft || 'calculating...'}</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Chat Tabs */}
             {(!activeConsultation.Payment || activeConsultation.Payment.status === 'verified') && user.role === 'doctor' && (
@@ -1043,29 +1364,26 @@ const Consultations = () => {
                         )}
                       </div>
 
+                      {referralInfo.referral?.referral_reason && (
+                        <div className="bg-violet-50 border border-violet-100 p-4 rounded-xl">
+                          <p className="text-xs text-violet-500 font-semibold uppercase tracking-wider mb-1">Referral Reason</p>
+                          <p className="text-sm text-violet-900 font-medium">{referralInfo.referral.referral_reason}</p>
+                        </div>
+                      )}
+
                       {/* GP Summary */}
                       <div className="bg-slate-50 border border-slate-150 p-4 rounded-xl">
-                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1.5">GP Referral Summary</p>
+                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1.5">GP Referral Notes</p>
                         <p className="text-sm text-slate-700 italic">"{referralInfo.referral?.referral_note}"</p>
                       </div>
 
                       {/* Pricing Details */}
                       <div className="border border-slate-100 rounded-xl p-4 flex flex-col gap-2">
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-slate-500">Standard Specialist Fee</span>
-                          <span className="font-semibold text-slate-700">
-                            {Number(referralInfo.referral?.remaining_payment || 0) + Number(referralInfo.referral?.discount_amount || 0)} ETB
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm text-emerald-600 font-medium">
-                          <span>Referral Discount (20%)</span>
-                          <span>-{referralInfo.referral?.discount_amount || 0} ETB</span>
-                        </div>
-                        <div className="h-px bg-slate-100 my-1" />
                         <div className="flex justify-between items-center">
-                          <span className="font-bold text-slate-800">Remaining Payment</span>
+                          <span className="font-bold text-slate-800">Specialist Consultation Fee</span>
                           <span className="text-2xl font-black text-primary-600">{referralInfo.referral?.remaining_payment || 0} ETB</span>
                         </div>
+                        <p className="text-xs text-slate-500">Full specialist fee required to activate your referral consultation.</p>
                       </div>
 
                       {/* Stepper Timeline */}
@@ -1109,7 +1427,7 @@ const Consultations = () => {
                             className="flex-1 py-3 bg-[#00A859] text-white hover:bg-[#00904d] font-extrabold rounded-xl transition text-sm flex items-center justify-center gap-2 shadow-md"
                           >
                             <CreditCard size={16} />
-                            {isSubmittingPayment ? 'Connecting...' : 'Pay Remaining Amount'}
+                            {isSubmittingPayment ? 'Connecting...' : 'Pay Specialist Fee'}
                           </button>
                         )}
                       </div>
@@ -1148,15 +1466,17 @@ const Consultations = () => {
                       ) : (
                         <>
                           <h3 className="text-xl font-bold text-slate-800 mb-2 text-center">
-                            {activeConsultation.Payment?.status === 'failed' ? t('consultations.paymentFailed') :
-                              activeConsultation.Payment?.status === 'expired' ? t('consultations.accessExpired') : t('consultations.paymentRequired')}
+                            {activeConsultation.status === 'waiting_payment' ? t('consultations.specialistPaymentRequired') :
+                              (activeConsultation.Payment?.status === 'failed' ? t('consultations.paymentFailed') :
+                               activeConsultation.Payment?.status === 'expired' ? t('consultations.accessExpired') : t('consultations.paymentRequired'))}
                           </h3>
                           <p className="text-slate-600 text-sm text-center mb-6">
-                            {activeConsultation.Payment?.status === 'failed'
-                              ? t('consultations.paymentFailedDesc')
-                              : activeConsultation.Payment?.status === 'expired'
-                                ? t('consultations.accessExpiredDesc')
-                                : "A one-time consultation fee is required to connect with your assigned doctor. Pay to unlock the chat for this consultation."}
+                            {activeConsultation.status === 'waiting_payment' ? t('consultations.specialistPaymentRequiredDesc') :
+                              (activeConsultation.Payment?.status === 'failed'
+                                ? t('consultations.paymentFailedDesc')
+                                : activeConsultation.Payment?.status === 'expired'
+                                  ? t('consultations.accessExpiredDesc')
+                                  : "A one-time consultation fee is required to connect with your assigned doctor. Pay to unlock the chat for this consultation.")}
                           </p>
 
                           {activeConsultation.Payment?.status === 'failed' && activeConsultation.Payment?.admin_notes && (
@@ -1264,6 +1584,19 @@ const Consultations = () => {
                   <>
                     {/* Chat Messages Area */}
                     <div className="flex-1 overflow-y-auto p-6 flex flex-col space-y-4">
+                      {/* Referred — permanent closure banner */}
+                      {activeConsultation.status === 'referred' && (
+                        <div className="mx-auto w-full max-w-md bg-violet-50 border border-violet-200 rounded-xl p-4 text-center shadow-sm mb-2">
+                          <div className="flex items-center justify-center gap-2 mb-1">
+                            <span className="text-violet-600 text-lg">🔒</span>
+                            <p className="font-bold text-violet-800 text-sm">GP Consultation Closed</p>
+                          </div>
+                          <p className="text-xs text-violet-600 leading-relaxed">
+                            This patient has been referred to a specialist. The GP consultation is permanently closed — chat, lab requests, prescriptions, and video calls are all disabled.
+                          </p>
+                        </div>
+                      )}
+
                       {/* Initial Case Info Bubble */}
                       <div className="mx-auto bg-white border border-slate-200 rounded-lg p-4 max-w-md shadow-sm text-sm text-center mb-4">
                         <h4 className="font-semibold text-slate-700 mb-1 border-b border-slate-100 pb-2">{t('consultations.consultDetails')}</h4>
@@ -1294,7 +1627,7 @@ const Consultations = () => {
                                   </div>
                                 )}
                                 <div className="mt-3 flex justify-end gap-2">
-                                  {req.status === 'pending' && user.role === 'doctor' && (
+                                  {req.status === 'pending' && user.role === 'doctor' && activeConsultation.status !== 'referred' && (
                                     <button
                                       onClick={() => confirmDelete(req.id)}
                                       className="px-3 py-1 bg-rose-50 text-rose-600 text-[10px] font-bold rounded hover:bg-rose-100 transition"
@@ -1306,7 +1639,7 @@ const Consultations = () => {
                                       setEditServiceForm({ instructions: req.instructions });
                                     }}
                                     className="px-3 py-1 bg-primary-100 text-primary-700 text-[10px] font-bold rounded hover:bg-primary-200 transition"
-                                  >View Details & Discuss</button>
+                                  >View Details</button>
                                 </div>
                               </div>
                             ))}
@@ -1381,7 +1714,7 @@ const Consultations = () => {
                       )}
 
                       {messages.filter(m => m.chat_type === activeChatType).map((msg, index) => {
-                        const isSentByMe = (msg.sender === user.role);
+                        const isSentByMe = msg.sender_id === user.id;
                         const isSystem = msg.sender === 'system';
 
                         if (isSystem) {
@@ -1438,10 +1771,22 @@ const Consultations = () => {
                                 })()
                               )}
 
-                              <span className={`text-[10px] mt-1 block text-right font-medium opacity-70
+                              <span className={`text-[10px] mt-1 flex items-center justify-end gap-1 font-medium opacity-70
                             ${isSentByMe ? 'text-primary-100' : 'text-slate-400'}
                           `}>
-                                {msg.time}
+                                <span>{msg.time}</span>
+                                {isSentByMe && (
+                                  <span
+                                    className="inline-flex items-center"
+                                    title={msg.read_at ? t('consultations.messageSeen') : t('consultations.messageSent')}
+                                  >
+                                    {msg.read_at ? (
+                                      <CheckCheck size={14} className="text-sky-200" strokeWidth={2.5} />
+                                    ) : (
+                                      <Check size={14} className="opacity-80" strokeWidth={2.5} />
+                                    )}
+                                  </span>
+                                )}
                               </span>
                             </div>
 
@@ -1459,87 +1804,101 @@ const Consultations = () => {
 
                     {/* Chat Input Area */}
                     <div className="h-20 bg-white border-t border-slate-200 px-6 py-4 flex items-center shrink-0">
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        className="hidden"
-                        onChange={handleFileUpload}
-                        disabled={activeConsultation.status === 'completed'}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={activeConsultation.status === 'completed'}
-                        className="text-slate-400 hover:text-slate-600 p-2 mr-1 transition disabled:opacity-50 disabled:hover:text-slate-400"
-                      >
-                        <Paperclip size={22} />
-                      </button>
-
-                      {isRecording ? (
-                        <div className="flex-1 flex items-center justify-between bg-rose-50 border border-rose-200 rounded-full px-4 py-2">
-                          <div className="flex items-center text-rose-600 font-bold w-20">
-                            <div className={`w-2 h-2 rounded-full bg-rose-600 mr-2 ${!isRecordingPaused ? 'animate-pulse' : 'opacity-50'}`}></div>
-                            {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
-                          </div>
-                          
-                          <div className="flex space-x-2">
-                            <button
-                              type="button"
-                              onClick={cancelRecording}
-                              className="text-slate-500 hover:text-rose-600 bg-white hover:bg-rose-100 p-1.5 rounded-full transition flex items-center justify-center h-8 w-8 shadow-sm border border-slate-200"
-                              title="Cancel Recording"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                            
-                            <button
-                              type="button"
-                              onClick={isRecordingPaused ? resumeRecording : pauseRecording}
-                              className="text-slate-500 hover:text-amber-600 bg-white hover:bg-amber-100 p-1.5 rounded-full transition flex items-center justify-center h-8 w-8 shadow-sm border border-slate-200"
-                              title={isRecordingPaused ? "Resume Recording" : "Pause Recording"}
-                            >
-                              {isRecordingPaused ? <Play size={16} fill="currentColor" /> : <Pause size={16} fill="currentColor" />}
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={sendRecording}
-                              className="bg-primary-600 hover:bg-primary-700 text-white p-1.5 rounded-full transition flex items-center justify-center h-8 w-8 shadow-sm"
-                              title="Send Voice Message"
-                            >
-                              <Send size={14} className="ml-0.5" />
-                            </button>
-                          </div>
+                      {/* Read-only banner for referred or archived cases */}
+                      {['referred', 'archived'].includes(activeConsultation.status) ? (
+                        <div className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-center text-sm text-slate-500 font-medium flex items-center justify-center gap-2">
+                          <Info size={16} className="text-violet-500" />
+                          {activeConsultation.status === 'referred' ? t('consultations.referredReadOnly') : t('consultations.chatClosed')}
+                        </div>
+                      ) : (['doctor', 'laboratorist', 'radiologist'].includes(user.role) && user.verification_status !== 'verified') ? (
+                        <div className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-center text-sm text-slate-500 font-medium">
+                          Your professional account is {user.verification_status || 'pending'} verification. Messaging is restricted.
                         </div>
                       ) : (
                         <>
+                          <input
+                            type="file"
+                            ref={fileInputRef}
+                            className="hidden"
+                            onChange={handleFileUpload}
+                            disabled={activeConsultation.status === 'completed'}
+                          />
                           <button
                             type="button"
-                            onClick={startRecording}
+                            onClick={() => fileInputRef.current?.click()}
                             disabled={activeConsultation.status === 'completed'}
-                            className="text-slate-400 hover:text-blue-600 p-2 mr-2 transition disabled:opacity-50 disabled:hover:text-slate-400"
+                            className="text-slate-400 hover:text-slate-600 p-2 mr-1 transition disabled:opacity-50 disabled:hover:text-slate-400"
                           >
-                            <Mic size={22} />
+                            <Paperclip size={22} />
                           </button>
-                          
-                          <form onSubmit={handleSendMessage} className="flex-1 flex items-center relative">
-                            <input
-                              type="text"
-                              autoComplete="off"
-                              value={newMessage}
-                              onChange={(e) => setNewMessage(e.target.value)}
-                              placeholder={activeConsultation.status === 'completed' ? t('consultations.chatClosed') : t('consultations.typeMessage')}
-                              disabled={activeConsultation.status === 'completed'}
-                              className="w-full bg-slate-100 rounded-full pl-5 pr-14 py-3 border-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
-                            />
-                            <button
-                              type="submit"
-                              disabled={!newMessage.trim() || activeConsultation.status === 'completed'}
-                              className="absolute right-2 top-1.5 p-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-full transition disabled:opacity-50 disabled:hover:bg-primary-600 flex items-center justify-center h-9 w-9"
-                            >
-                              <Send size={16} className="ml-0.5" />
-                            </button>
-                          </form>
+
+                          {isRecording ? (
+                            <div className="flex-1 flex items-center justify-between bg-rose-50 border border-rose-200 rounded-full px-4 py-2">
+                              <div className="flex items-center text-rose-600 font-bold w-20">
+                                <div className={`w-2 h-2 rounded-full bg-rose-600 mr-2 ${!isRecordingPaused ? 'animate-pulse' : 'opacity-50'}`}></div>
+                                {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+                              </div>
+                              
+                              <div className="flex space-x-2">
+                                <button
+                                  type="button"
+                                  onClick={cancelRecording}
+                                  className="text-slate-500 hover:text-rose-600 bg-white hover:bg-rose-100 p-1.5 rounded-full transition flex items-center justify-center h-8 w-8 shadow-sm border border-slate-200"
+                                  title="Cancel Recording"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                                
+                                <button
+                                  type="button"
+                                  onClick={isRecordingPaused ? resumeRecording : pauseRecording}
+                                  className="text-slate-500 hover:text-amber-600 bg-white hover:bg-amber-100 p-1.5 rounded-full transition flex items-center justify-center h-8 w-8 shadow-sm border border-slate-200"
+                                  title={isRecordingPaused ? "Resume Recording" : "Pause Recording"}
+                                >
+                                  {isRecordingPaused ? <Play size={16} fill="currentColor" /> : <Pause size={16} fill="currentColor" />}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={sendRecording}
+                                  className="bg-primary-600 hover:bg-primary-700 text-white p-1.5 rounded-full transition flex items-center justify-center h-8 w-8 shadow-sm"
+                                  title="Send Voice Message"
+                                >
+                                  <Send size={14} className="ml-0.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={startRecording}
+                                disabled={activeConsultation.status === 'completed'}
+                                className="text-slate-400 hover:text-blue-600 p-2 mr-2 transition disabled:opacity-50 disabled:hover:text-slate-400"
+                              >
+                                <Mic size={22} />
+                              </button>
+                              
+                              <form onSubmit={handleSendMessage} className="flex-1 flex items-center relative">
+                                <input
+                                  type="text"
+                                  autoComplete="off"
+                                  value={newMessage}
+                                  onChange={(e) => setNewMessage(e.target.value)}
+                                  placeholder={activeConsultation.status === 'completed' ? t('consultations.chatClosed') : t('consultations.typeMessage')}
+                                  disabled={activeConsultation.status === 'completed'}
+                                  className="w-full bg-slate-100 rounded-full pl-5 pr-14 py-3 border-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+                                />
+                                <button
+                                  type="submit"
+                                  disabled={!newMessage.trim() || activeConsultation.status === 'completed'}
+                                  className="absolute right-2 top-1.5 p-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-full transition disabled:opacity-50 disabled:hover:bg-primary-600 flex items-center justify-center h-9 w-9"
+                                >
+                                  <Send size={16} className="ml-0.5" />
+                                </button>
+                              </form>
+                            </>
+                          )}
                         </>
                       )}
                     </div>
@@ -1568,8 +1927,17 @@ const Consultations = () => {
                         </div>
                       </div>
 
+                      {referralInfo.referral?.referral_reason && (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Referral Reason</span>
+                          <p className="text-xs text-violet-800 bg-violet-50 p-2.5 rounded border border-violet-100 font-medium">
+                            {referralInfo.referral.referral_reason}
+                          </p>
+                        </div>
+                      )}
+
                       <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">GP Notes / Reasons</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">GP Notes</span>
                         <p className="text-xs text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-100 italic">
                           "{referralInfo.referral?.referral_note}"
                         </p>
@@ -1688,20 +2056,25 @@ const Consultations = () => {
             </div>
 
             <div className="p-5 overflow-y-auto flex-1 flex flex-col">
-              {/* Metadata & Edit capabilities */}
+              {/* Read-only notice when GP consultation is referred */}
+              {activeConsultation?.status === 'referred' && (
+                <div className="mb-4 bg-violet-50 border border-violet-200 rounded-lg px-4 py-3 flex items-center gap-2 text-xs text-violet-700 font-medium">
+                  🔒 This GP consultation is closed after referral. Service request details are read-only.
+                </div>
+              )}
+              {/* Metadata */}
               <div className="bg-primary-50 p-4 border border-primary-100 rounded-xl mb-4 shrink-0">
-                  <div className="flex justify-between items-start mb-2">
-                    <h4 className="font-bold text-primary-800 uppercase text-lg">{selectedService.ServiceItem?.name}</h4>
-                  </div>
+                <div className="flex justify-between items-start mb-2">
+                  <h4 className="font-bold text-primary-800 uppercase text-lg">{selectedService.ServiceItem?.name}</h4>
+                </div>
               </div>
-
             </div>
           </div>
         </div>
       )}
 
-      {/* Service Request Form Modal */}
-      {showServiceForm && (
+      {/* Service Request Form Modal — blocked for referred consultations */}
+      {showServiceForm && activeConsultation?.status !== 'referred' && (
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-fadeIn">
             <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
@@ -1737,8 +2110,8 @@ const Consultations = () => {
         </div>
       )}
 
-      {/* Prescribe Modal */}
-      {showPrescribeModal && (
+      {/* Prescribe Modal — blocked for referred consultations */}
+      {showPrescribeModal && activeConsultation?.status !== 'referred' && (
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-fadeIn flex flex-col max-h-[90vh]">
             <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
@@ -1869,6 +2242,119 @@ const Consultations = () => {
         isDanger={true}
       />
 
+      {/* GP refer to specialist modal */}
+      {referralModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-sm bg-slate-900/60">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden" role="dialog" aria-modal="true">
+            <div className="px-6 pt-6 pb-4 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">{t('consultations.referModalTitle')}</h3>
+                <p className="text-xs text-slate-500 mt-0.5">GP referral only — select a specialist doctor. Lab and radiology services are not handled here.</p>
+              </div>
+              <button type="button" onClick={() => setReferralModalOpen(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+            </div>
+            <form onSubmit={handleReferSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                  {t('consultations.referSpecialty')} <span className="text-red-500">*</span>
+                </label>
+                <p className="text-xs text-slate-400 mb-1.5">Only specialist doctors are listed. GP, laboratorist, and radiologist are excluded.</p>
+                <select
+                  required
+                  value={referralForm.target_specialty}
+                  onChange={e => {
+                    setReferralForm(prev => ({ ...prev, target_specialty: e.target.value }));
+                    setReferralFieldErrors(prev => ({ ...prev, target_specialty: undefined }));
+                  }}
+                  className={`w-full px-3 py-2.5 border ${referralFieldErrors.target_specialty ? 'border-red-500 bg-red-50' : 'border-slate-300'} rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400`}
+                >
+                  <option value="" disabled>{t('consultations.referSpecialtyPlaceholder')}</option>
+                  {REFERRAL_SPECIALIST_TYPES.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+                {referralFieldErrors.target_specialty && (
+                  <p className="text-red-500 text-xs mt-1">{referralFieldErrors.target_specialty}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                  {t('consultations.referUrgency')} <span className="text-red-500">*</span>
+                </label>
+                <select
+                  required
+                  value={referralForm.urgency}
+                  onChange={e => {
+                    setReferralForm(prev => ({ ...prev, urgency: e.target.value }));
+                    setReferralFieldErrors(prev => ({ ...prev, urgency: undefined }));
+                  }}
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+                >
+                  <option value="routine">{t('consultations.urgencyRoutine')}</option>
+                  <option value="urgent">{t('consultations.urgencyUrgent')}</option>
+                  <option value="emergency">{t('consultations.urgencyEmergency')}</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                  {t('consultations.referReason')} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={referralForm.referral_reason}
+                  onChange={e => {
+                    setReferralForm(prev => ({ ...prev, referral_reason: e.target.value }));
+                    setReferralFieldErrors(prev => ({ ...prev, referral_reason: undefined }));
+                  }}
+                  placeholder={t('consultations.referReasonPlaceholder')}
+                  className={`w-full px-3 py-2.5 border ${referralFieldErrors.referral_reason ? 'border-red-500 bg-red-50' : 'border-slate-300'} rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400`}
+                />
+                {referralFieldErrors.referral_reason && (
+                  <p className="text-red-500 text-xs mt-1">{referralFieldErrors.referral_reason}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                  {t('consultations.referNotes')} <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={referralForm.referral_notes}
+                  onChange={e => {
+                    setReferralForm(prev => ({ ...prev, referral_notes: e.target.value }));
+                    setReferralFieldErrors(prev => ({ ...prev, referral_notes: undefined }));
+                  }}
+                  placeholder={t('consultations.referNotesPlaceholder')}
+                  className={`w-full px-3 py-2.5 border ${referralFieldErrors.referral_notes ? 'border-red-500 bg-red-50' : 'border-slate-300'} rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-400`}
+                />
+                {referralFieldErrors.referral_notes && (
+                  <p className="text-red-500 text-xs mt-1">{referralFieldErrors.referral_notes}</p>
+                )}
+              </div>
+              <div className="flex flex-row-reverse gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={referralLoading}
+                  className="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm font-bold transition disabled:opacity-60 flex items-center gap-2"
+                >
+                  {referralLoading && <Loader2 size={14} className="animate-spin" />}
+                  {t('consultations.referSubmit')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReferralModalOpen(false)}
+                  className="px-5 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50"
+                >
+                  {t('common.cancel')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Consultation Feedback Modal */}
       {consultFeedback.isOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex justify-center items-center z-50 p-4">
@@ -1877,7 +2363,7 @@ const Consultations = () => {
             <p className="text-sm text-slate-500 mb-6">
               How was your experience with Dr. {activeConsultation?.Doctor?.name || 'your doctor'}?
             </p>
-            <div className="flex justify-center space-x-2 mb-6">
+            <div className="flex justify-center space-x-2 mb-2">
               {[1, 2, 3, 4, 5].map(star => (
                 <button
                   key={star}
@@ -1889,21 +2375,28 @@ const Consultations = () => {
                 </button>
               ))}
             </div>
+            {consultFeedbackErrors.rating && (
+              <p className="text-center text-red-500 text-xs mb-4">{consultFeedbackErrors.rating}</p>
+            )}
+            <div className="mb-6"></div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Comment (Optional)</label>
             <textarea
               value={consultFeedback.comment}
               onChange={e => setConsultFeedback(prev => ({ ...prev, comment: e.target.value }))}
-              className="w-full border border-slate-300 rounded-lg p-3 mb-6 min-h-[90px] resize-none focus:ring-2 focus:ring-primary-500 outline-none"
+              className={`w-full border ${consultFeedbackErrors.comment ? 'border-red-500 bg-red-50' : 'border-slate-300'} rounded-lg p-3 mb-1 min-h-[90px] resize-none focus:ring-2 focus:ring-primary-500 outline-none`}
               placeholder="Share details of your experience..."
             />
-            <div className="flex justify-end space-x-3">
+            {consultFeedbackErrors.comment && (
+              <p className="text-red-500 text-xs mb-4">{consultFeedbackErrors.comment}</p>
+            )}
+            <div className="flex justify-end space-x-3 mt-6">
               <button
-                onClick={() => setConsultFeedback({ isOpen: false, rating: 0, comment: '', submitting: false })}
+                onClick={() => { setConsultFeedback({ isOpen: false, rating: 0, comment: '', submitting: false }); setConsultFeedbackErrors({}); }}
                 className="px-4 py-2 text-slate-600 hover:bg-slate-100 font-medium rounded-lg transition"
               >Cancel</button>
               <button
                 onClick={handleSubmitConsultFeedback}
-                disabled={consultFeedback.submitting || consultFeedback.rating === 0}
+                disabled={consultFeedback.submitting}
                 className="px-6 py-2 bg-primary-600 text-white font-bold rounded-lg hover:bg-primary-700 disabled:opacity-50 transition"
               >
                 {consultFeedback.submitting ? 'Submitting...' : 'Submit Feedback'}

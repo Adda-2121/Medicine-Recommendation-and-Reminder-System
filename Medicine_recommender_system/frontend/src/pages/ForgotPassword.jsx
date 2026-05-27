@@ -131,8 +131,14 @@ const ForgotPassword = () => {
                 type="tel" 
                 className={`w-full border rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition ${fieldErrors.phoneNumber ? 'border-red-500' : 'border-slate-300'}`} 
                 value={phoneNumber} 
-                onChange={(e) => setPhoneNumber(e.target.value)} 
-                placeholder="+1234567890"
+                onChange={(e) => {
+                  let value = e.target.value.replace(/[^\d+]/g, '');
+                  if (value && !value.startsWith('+')) {
+                    value = '+251' + value;
+                  }
+                  setPhoneNumber(value);
+                }}
+                placeholder="+251911234567"
               />
               {fieldErrors.phoneNumber && <p className="text-red-500 text-xs mt-1">{fieldErrors.phoneNumber}</p>}
             </div>

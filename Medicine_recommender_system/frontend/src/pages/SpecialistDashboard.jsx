@@ -3,7 +3,7 @@ import { AuthContext } from '../contexts/AuthContext';
 import api from '../services/api';
 import io from 'socket.io-client';
 import { useSearchParams } from 'react-router-dom';
-import { Activity, Clock, CheckCircle, FileText, UploadCloud, User, Stethoscope, AlertTriangle, PhoneCall, MessageSquare, Send } from 'lucide-react';
+import { Microscope, Clock, CheckCircle, FileText, UploadCloud, User, Stethoscope, AlertTriangle, PhoneCall, MessageSquare, Send, Activity } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import { uploadResultSchema, formatZodErrors } from '../utils/validationSchemas';
@@ -74,19 +74,19 @@ const SpecialistDashboard = () => {
     if (!target) return;
 
     if (target.status === 'pending' && target.payment_status === 'paid') {
-      // Auto-start → decreases queue for patient and specialist
-      api.put(`/service-requests/${reqId}`, { status: 'in_progress' })
+      // Auto-accept → marks active, decreases queue for patient and specialist
+      api.put(`/service-requests/${reqId}/accept`)
         .then(() => {
           fetchRequests();
-          setSelectedReq({ ...target, status: 'in_progress' });
-          toast.success('Request started — queue updated.');
+          setSelectedReq({ ...target, status: 'in_progress', queue_status: 'active' });
+          toast.success('Request accepted — queue updated.');
         })
         .catch(err => {
-          console.error('Auto-start failed', err);
+          console.error('Auto-accept failed', err);
           setSelectedReq(target);
         });
     } else {
-      // Unpaid or already in progress — just open the modal
+      // Unpaid or already active — just open the modal
       setSelectedReq(target);
     }
   }, [loading, requests]);
@@ -212,16 +212,34 @@ const SpecialistDashboard = () => {
     }
   }, [selectedReq]);
 
+  const handleOpenRequest = async (req) => {
+    // Only accept paid, waiting requests — this is the queue-decrement trigger
+    if (req.payment_status === 'paid' && req.queue_status === 'waiting') {
+      try {
+        await api.put(`/service-requests/${req.id}/accept`);
+        setSelectedReq({ ...req, status: 'in_progress', queue_status: 'active' });
+        fetchRequests();
+        toast.success(`Queue #${req.queue_number} accepted — queue updated for waiting patients.`);
+      } catch (err) {
+        console.error('Accept failed', err);
+        setSelectedReq(req);
+      }
+    } else {
+      setSelectedReq(req);
+    }
+    if (req.consultation_id) loadChat(req.consultation_id);
+  };
+
   const handleStartTest = async (reqId) => {
     try {
-      await api.put(`/service-requests/${reqId}`, { status: 'in_progress' });
+      await api.put(`/service-requests/${reqId}/accept`);
       fetchRequests();
       if (selectedReq && selectedReq.id === reqId) {
-        setSelectedReq({ ...selectedReq, status: 'in_progress' });
+        setSelectedReq({ ...selectedReq, status: 'in_progress', queue_status: 'active' });
       }
     } catch (err) {
       console.error(err);
-      toast.error(err.response?.data?.message || 'Failed to update status.');
+      toast.error(err.response?.data?.message || 'Failed to start request.');
     }
   };
 
@@ -234,7 +252,7 @@ const SpecialistDashboard = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-slate-800 flex items-center capitalize">
-            <Activity className="mr-3 text-primary-600" /> {user.role} Dashboard
+            <Microscope className="mr-3 text-primary-600" /> {user.role} Dashboard
           </h1>
           <p className="text-slate-500 mt-1">Manage requested services, track patient queue, and upload results.</p>
         </div>
@@ -287,7 +305,17 @@ const SpecialistDashboard = () => {
                   <div>
                     <div className="flex justify-between items-start mb-3">
                       <div>
-                        <h3 className="font-bold text-lg text-slate-800 uppercase">#{index + 1} - {req.ServiceItem?.name}</h3>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="bg-primary-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                            Queue #{req.queue_number ?? index + 1}
+                          </span>
+                          {req.queue_status === 'active' && (
+                            <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-full border border-blue-200">
+                              Active
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="font-bold text-lg text-slate-800 uppercase">{req.ServiceItem?.name}</h3>
                         {req.payment_status === 'paid' ? (
                           <span className="text-xs font-bold text-emerald-600">PAID</span>
                         ) : (
@@ -296,8 +324,8 @@ const SpecialistDashboard = () => {
                           </span>
                         )}
                       </div>
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide inline-flex items-center ${req.status === 'in_progress' ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-amber-100 text-amber-700 border border-amber-200'}`}>
-                        {req.status === 'completed' ? 'Completed' : (req.status === 'in_progress' ? 'Pending' : req.status.replace('_', ' '))}
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide inline-flex items-center ${req.queue_status === 'active' ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-amber-100 text-amber-700 border border-amber-200'}`}>
+                        {req.queue_status === 'active' ? 'In Progress' : 'Waiting'}
                       </span>
                     </div>
 
@@ -330,11 +358,12 @@ const SpecialistDashboard = () => {
 
                   <div className="pt-2 flex justify-end">
                     <button
-                      onClick={() => setSelectedReq(req)}
+                      onClick={() => handleOpenRequest(req)}
                       className={`w-full py-2.5 rounded-lg font-bold transition flex items-center justify-center border shadow-sm ${req.payment_status === 'paid' ? 'bg-primary-50 text-primary-700 hover:bg-primary-600 hover:text-white border-primary-100' : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'}`}
+                      disabled={req.payment_status !== 'paid'}
                     >
                       {req.payment_status === 'paid' ? (
-                        <>Process Result <CheckCircle size={16} className="ml-1.5" /></>
+                        <>{req.queue_status === 'active' ? 'Continue Processing' : 'Open & Accept'} <CheckCircle size={16} className="ml-1.5" /></>
                       ) : (
                         <>Waiting for Payment</>
                       )}
@@ -437,7 +466,7 @@ const SpecialistDashboard = () => {
                 <p className="text-sm text-primary-600 mb-2">Requested By: <span className="font-semibold">Dr. {selectedReq.Doctor?.name} ({selectedReq.Doctor?.work_location || 'Unknown location'})</span></p>
                 {selectedReq.instructions && <p className="text-sm italic text-slate-600 border-l-2 border-primary-300 pl-3 py-1">"{selectedReq.instructions}"</p>}
 
-                {selectedReq.status === 'pending' && (
+                {selectedReq.status === 'pending' && selectedReq.queue_status !== 'active' && (
                   <button
                     onClick={() => handleStartTest(selectedReq.id)}
                     className="mt-4 text-xs font-bold bg-white border border-primary-200 text-primary-700 px-3 py-1.5 rounded-lg shadow-sm hover:bg-primary-100 transition"

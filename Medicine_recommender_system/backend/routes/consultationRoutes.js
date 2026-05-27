@@ -11,8 +11,9 @@ const {
   getTriageRules,
   clearHistory,
   getReferralDetails,
+  getPatientReferrals,
 } = require('../controllers/consultationController');
-const { protect, authorize } = require('../middlewares/authMiddleware');
+const { protect, authorize, verifiedProfessional } = require('../middlewares/authMiddleware');
 
 // Public — triage rules for the booking form
 router.get('/triage-rules', getTriageRules);
@@ -27,14 +28,17 @@ router.route('/')
 // Patient status categories (admin only) - must be before /:id routes
 router.get('/patient-statuses', protect, authorize('company_admin'), getPatientStatuses);
 
+// Patient referral summary for dashboard
+router.get('/my-referrals', protect, authorize('patient'), getPatientReferrals);
+
 // Doctor completes a consultation
-router.put('/:id/complete', protect, authorize('doctor'), completeConsultation);
+router.put('/:id/complete', protect, authorize('doctor'), verifiedProfessional, completeConsultation);
 
 // Doctor resumes a consultation after results are ready
-router.put('/:id/resume', protect, authorize('doctor'), resumeConsultation);
+router.put('/:id/resume', protect, authorize('doctor'), verifiedProfessional, resumeConsultation);
 
 // GP refers patient to a specialist
-router.post('/:id/refer', protect, authorize('doctor'), referToSpecialist);
+router.post('/:id/refer', protect, authorize('doctor'), verifiedProfessional, referToSpecialist);
 
 // Get referral details for specialist/patient
 router.get('/:id/referral', protect, getReferralDetails);

@@ -82,7 +82,7 @@ exports.verifyPayment = async (req, res) => {
     } else if (status === 'expired' && payment.Patient?.phone_number) {
       await sendSMS(
         payment.Patient.phone_number,
-        `Hello ${payment.Patient.name}, your 1-week consultation access has EXPIRED. Please re-subscribe to continue chatting with your doctor.`
+        `Hello ${payment.Patient.name}, your consultation access has EXPIRED. Please re-subscribe to continue chatting with your doctor.`
       );
     }
 
@@ -90,6 +90,10 @@ exports.verifyPayment = async (req, res) => {
       const consultationController = require('./consultationController');
       if (consultationController.triggerAutoAssignment) {
         consultationController.triggerAutoAssignment();
+      }
+      // NEW: Activate specialist consultation if this was a referral
+      if (consultationController.activateSpecialistConsultation) {
+        await consultationController.activateSpecialistConsultation(payment.consultation_id);
       }
     }
 

@@ -15,8 +15,8 @@ const Profile = () => {
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
-    phone: '', // Placeholder for future expansion
-    address: '' // Placeholder for future expansion
+    phone: user?.phone_number || '',
+    address: ''
   });
 
   const [isEditingPassword, setIsEditingPassword] = useState(false);
@@ -38,7 +38,7 @@ const Profile = () => {
       setFormData({
         name: user?.name || '',
         email: user?.email || '',
-        phone: '',
+        phone: user?.phone_number || '',
         address: ''
       });
       setProfileFieldErrors({});
@@ -49,25 +49,25 @@ const Profile = () => {
     e.preventDefault();
     setProfileFieldErrors({});
 
-    const result = profileUpdateSchema.safeParse({ 
-      name: formData.name, 
-      age: 20, // filler for age
-      sex: 'Male', // filler for sex, we only want to validate name
-      phone_number: formData.phone || undefined
-    });
-    // Wait, profileUpdateSchema expects age and sex.
-    // Let me construct a partial schema just for Profile.jsx, or use .partial().
-    // Actually, I can just do profileUpdateSchema.partial().safeParse(...)
-    
-    const partialResult = profileUpdateSchema.partial().safeParse({ 
-      name: formData.name, 
-      email: formData.email,
-      phone_number: formData.phone || undefined 
-    });
-
-    if (!partialResult.success) {
-      setProfileFieldErrors(formatZodErrors(partialResult.error));
+    // Validate name
+    if (!formData.name || formData.name.trim().length < 2) {
+      setProfileFieldErrors({ name: 'please wright your full name' });
       return;
+    }
+    
+    // Validate email format
+    if (!formData.email || !formData.email.includes('@')) {
+      setProfileFieldErrors({ email: 'Please enter a valid email address' });
+      return;
+    }
+    
+    // Validate phone if provided
+    if (formData.phone && formData.phone.length > 0) {
+      const phoneRegex = /^\+251[79]\d{8}$/;
+      if (!phoneRegex.test(formData.phone.replace(/\s/g, ''))) {
+        setProfileFieldErrors({ phone_number: 'Please enter a valid Ethiopian phone number (e.g., +251911234567)' });
+        return;
+      }
     }
 
     try {
@@ -78,7 +78,8 @@ const Profile = () => {
       });
       toast.success(res.data.message || 'Profile updated successfully.');
       setIsEditing(false);
-      // Optional: Update user in AuthContext if needed
+      // Reload to update user context
+      window.location.reload();
     } catch (err) {
        toast.error(err.response?.data?.message || 'Failed to update profile');
     }
@@ -124,14 +125,35 @@ const Profile = () => {
     e.preventDefault();
     setPasswordFieldErrors({});
 
-    const result = passwordUpdateSchema.safeParse({
-      currentPassword: passwordData.currentPassword,
-      newPassword: passwordData.newPassword,
-      confirmPassword: passwordData.confirmPassword
-    });
+    // Validate current password
+    if (!passwordData.currentPassword || passwordData.currentPassword.length === 0) {
+      setPasswordFieldErrors({ currentPassword: 'Current password is required' });
+      return;
+    }
 
-    if (!result.success) {
-      setPasswordFieldErrors(formatZodErrors(result.error));
+    // Validate new password
+    if (!passwordData.newPassword || passwordData.newPassword.length < 8) {
+      setPasswordFieldErrors({ newPassword: 'New password must be at least 8 characters long' });
+      return;
+    }
+    
+    // Check password strength
+    if (!/[a-z]/.test(passwordData.newPassword)) {
+      setPasswordFieldErrors({ newPassword: 'Password must contain at least one lowercase letter' });
+      return;
+    }
+    if (!/[A-Z]/.test(passwordData.newPassword)) {
+      setPasswordFieldErrors({ newPassword: 'Password must contain at least one uppercase letter' });
+      return;
+    }
+    if (!/\d/.test(passwordData.newPassword)) {
+      setPasswordFieldErrors({ newPassword: 'Password must contain at least one number' });
+      return;
+    }
+
+    // Validate password confirmation
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setPasswordFieldErrors({ confirmPassword: 'Passwords do not match' });
       return;
     }
 
@@ -258,7 +280,14 @@ const Profile = () => {
                   <input 
                     type="tel" disabled={!isEditing} placeholder={t('profile.phonePlaceholder')}
                     className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50 disabled:text-slate-500 transition-colors ${profileFieldErrors.phone_number ? 'border-red-500' : 'border-slate-300'}`}
-                    value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                    value={formData.phone} 
+                    onChange={(e) => {
+                      let value = e.target.value.replace(/[^\d+]/g, '');
+                      if (value && !value.startsWith('+')) {
+                        value = '+251' + value;
+                      }
+                      setFormData({...formData, phone: value});
+                    }}
                   />
                   {profileFieldErrors.phone_number && <p className="text-red-500 text-xs mt-1">{profileFieldErrors.phone_number}</p>}
                 </div>
@@ -272,16 +301,41 @@ const Profile = () => {
                   </select>
                 </div>
                 
-                {(user?.role === 'laboratorist' || user?.role === 'radiologist') && (
+                {user?.role === 'doctor' && user?.specialty && (
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">{t('profile.capabilities')}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">{t('profile.specialty')}</label>
                     <input 
                       type="text" disabled={true}
                       className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-slate-50 text-slate-500 cursor-not-allowed"
-                      value={user?.specializations?.join(', ') || t('profile.noneAssigned')}
+                      value={user?.specialty || t('profile.noneAssigned')}
                     />
                     <p className="text-xs text-slate-400 mt-1">{t('profile.contactAdmin')}</p>
                   </div>
+                )}
+                
+                {(user?.role === 'laboratorist' || user?.role === 'radiologist') && (
+                  <>
+                    {user?.specialty && (
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-slate-700 mb-2">{t('profile.specialty')}</label>
+                        <input 
+                          type="text" disabled={true}
+                          className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-slate-50 text-slate-500 cursor-not-allowed"
+                          value={user?.specialty || t('profile.noneAssigned')}
+                        />
+                        <p className="text-xs text-slate-400 mt-1">{t('profile.contactAdmin')}</p>
+                      </div>
+                    )}
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-slate-700 mb-2">{t('profile.capabilities')}</label>
+                      <input 
+                        type="text" disabled={true}
+                        className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-slate-50 text-slate-500 cursor-not-allowed"
+                        value={user?.specializations?.join(', ') || t('profile.noneAssigned')}
+                      />
+                      <p className="text-xs text-slate-400 mt-1">{t('profile.contactAdmin')}</p>
+                    </div>
+                  </>
                 )}
               </div>
               

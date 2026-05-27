@@ -78,7 +78,17 @@ const ServiceRequest = sequelize.define('ServiceRequest', {
   result_notes: {
     type: DataTypes.TEXT,
     allowNull: true,
-  }
+  },
+  queue_number: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Sequential queue number per specialist, assigned at request creation time',
+  },
+  queue_status: {
+    type: DataTypes.ENUM('waiting', 'active', 'completed'),
+    defaultValue: 'waiting',
+    comment: 'waiting = not yet opened, active = specialist opened/accepted, completed = done',
+  },
 }, {
   timestamps: true,
   createdAt: 'created_at',

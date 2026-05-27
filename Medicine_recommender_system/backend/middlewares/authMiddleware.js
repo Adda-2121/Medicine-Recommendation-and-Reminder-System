@@ -44,3 +44,16 @@ exports.authorize = (...roles) => {
     next();
   };
 };
+// Grant access only to verified professionals (doctors, laboratorists, radiologists)
+exports.verifiedProfessional = (req, res, next) => {
+  const professionalRoles = ['doctor', 'laboratorist', 'radiologist'];
+  
+  if (professionalRoles.includes(req.user.role)) {
+    if (req.user.verification_status !== 'verified') {
+       return res.status(403).json({
+         message: `Access denied. Your account status is: ${req.user.verification_status || 'pending'}. Professionals must be verified by an administrator to perform this action.`,
+       });
+    }
+  }
+  next();
+};

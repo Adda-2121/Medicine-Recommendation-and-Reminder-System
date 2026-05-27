@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
-import { Users, Activity, FileText, PieChart, ShieldPlus, Calendar, Stethoscope, Settings, FlaskConical, CheckCircle2, Clock, CreditCard, UserX } from 'lucide-react';
+import { Users, Activity, FileText, PieChart, ShieldPlus, Calendar, Stethoscope, Settings, FlaskConical, CheckCircle2, Clock, CreditCard, UserX, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import RowMenu from '../components/common/RowMenu';
 import ReasonModal from '../components/common/ReasonModal';
+import FieldTooltip from '../components/common/FieldTooltip';
 import { 
   adminDoctorSchema, 
   adminEditDoctorSchema, 
@@ -100,6 +101,7 @@ const DoctorsTab = () => {
     name: '', email: '', password: '',
     specialty: '', license_number: '', experience_years: ''
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
@@ -137,9 +139,41 @@ const DoctorsTab = () => {
     setError('');
     setFieldErrors({});
     
+    // Validate all required fields
+    if (!formData.name || formData.name.trim().length < 2) {
+      setFieldErrors({ name: 'please wright your full name' });
+      setError('Please complete all required fields with valid information.');
+      return;
+    }
+    
+    if (!formData.email || !formData.email.includes('@')) {
+      setFieldErrors({ email: 'Please enter a valid email address' });
+      setError('Please enter a valid email address.');
+      return;
+    }
+    
+    if (!formData.password || formData.password.length < 8) {
+      setFieldErrors({ password: 'Password must be at least 8 characters long' });
+      setError('Password must be at least 8 characters and contain uppercase, lowercase, and number.');
+      return;
+    }
+    
+    if (!formData.specialty) {
+      setFieldErrors({ specialty: 'Please select a medical specialty' });
+      setError('Please select a medical specialty.');
+      return;
+    }
+    
+    if (!formData.license_number || formData.license_number.trim().length === 0) {
+      setFieldErrors({ license_number: 'License number is required' });
+      setError('Please enter the medical license number.');
+      return;
+    }
+    
     const result = adminDoctorSchema.safeParse(formData);
     if (!result.success) {
       setFieldErrors(formatZodErrors(result.error));
+      setError('Please complete all required fields with valid information.');
       return;
     }
 
@@ -153,6 +187,7 @@ const DoctorsTab = () => {
       setFieldErrors({});
       setShowForm(false);
       fetchDoctors();
+      toast.success('Doctor registered successfully');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to register doctor');
     } finally {
@@ -203,9 +238,35 @@ const DoctorsTab = () => {
     e.preventDefault();
     setEditFieldErrors({});
 
+    // Validate all required fields
+    if (!editForm.name || editForm.name.trim().length < 2) {
+      setEditFieldErrors({ name: 'please wright your full name' });
+      toast.error('Please complete all required fields with valid information.');
+      return;
+    }
+    
+    if (!editForm.email || !editForm.email.includes('@')) {
+      setEditFieldErrors({ email: 'Please enter a valid email address' });
+      toast.error('Please enter a valid email address.');
+      return;
+    }
+    
+    if (!editForm.specialty) {
+      setEditFieldErrors({ specialty: 'Please select a medical specialty' });
+      toast.error('Please select a medical specialty.');
+      return;
+    }
+    
+    if (!editForm.license_number || editForm.license_number.trim().length === 0) {
+      setEditFieldErrors({ license_number: 'License number is required' });
+      toast.error('Please enter the medical license number.');
+      return;
+    }
+
     const result = adminEditDoctorSchema.safeParse(editForm);
     if (!result.success) {
       setEditFieldErrors(formatZodErrors(result.error));
+      toast.error('Please complete all required fields with valid information.');
       return;
     }
 
@@ -272,7 +333,7 @@ const DoctorsTab = () => {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
                 <input
-                  type="text" placeholder="Dr. Jane Doe"
+                  type="text" placeholder="Dr. Memar Alemneh"
                   className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.name ? 'border-red-500' : 'border-slate-300'}`}
                   value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
@@ -281,7 +342,7 @@ const DoctorsTab = () => {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
                 <input
-                  type="email" placeholder="jane.doe@hospital.com"
+                  type="email" placeholder="memar.alemneh@hospital.com"
                   className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.email ? 'border-red-500' : 'border-slate-300'}`}
                   value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 />
@@ -289,11 +350,24 @@ const DoctorsTab = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Specialty</label>
-                <input
-                  type="text" placeholder="e.g. Cardiology, Pediatrics"
+                <select
                   className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.specialty ? 'border-red-500' : 'border-slate-300'}`}
                   value={formData.specialty} onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
-                />
+                >
+                  <option value="" disabled>Select specialty…</option>
+                  <option value="General Practitioner">General Practitioner (GP)</option>
+                  <optgroup label="Specialists">
+                    <option value="Psychiatrist">Psychiatrist</option>
+                    <option value="Dermatologist">Dermatologist</option>
+                    <option value="Cardiologist">Cardiologist</option>
+                    <option value="Internal Medicine">Internal Medicine</option>
+                    <option value="Pediatrician">Pediatrician</option>
+                    <option value="Gynecologist">Gynecologist</option>
+                    <option value="Pulmonologist">Pulmonologist</option>
+                    <option value="Neurologist">Neurologist</option>
+                    <option value="Orthopedic">Orthopedic</option>
+                  </optgroup>
+                </select>
                 {fieldErrors.specialty && <p className="text-red-500 text-xs mt-1">{fieldErrors.specialty}</p>}
               </div>
               <div>
@@ -316,12 +390,18 @@ const DoctorsTab = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Temporary Password</label>
-                <input
-                  type="password"
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.password ? 'border-red-500' : 'border-slate-300'}`}
-                  value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                />
-                {fieldErrors.password && <p className="text-red-500 text-xs mt-1">{fieldErrors.password}</p>}
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.password ? 'border-red-500' : 'border-slate-300'}`}
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  />
+                  {fieldErrors.password && <p className="text-red-500 text-xs mt-1">{fieldErrors.password}</p>}
+                  <span className="absolute right-2 top-2 cursor-pointer text-slate-400" onClick={() => setShowPassword(!showPassword)}>
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -666,8 +746,22 @@ const DoctorsTab = () => {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Specialty</label>
-                  <input type="text" value={editForm.specialty} onChange={e => setEditForm({...editForm, specialty: e.target.value})}
-                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editFieldErrors.specialty ? 'border-red-500' : 'border-slate-300'}`} />
+                  <select value={editForm.specialty} onChange={e => setEditForm({...editForm, specialty: e.target.value})}
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${editFieldErrors.specialty ? 'border-red-500' : 'border-slate-300'}`}>
+                    <option value="" disabled>Select specialty…</option>
+                    <option value="General Practitioner">General Practitioner (GP)</option>
+                    <optgroup label="Specialists">
+                      <option value="Psychiatrist">Psychiatrist</option>
+                      <option value="Dermatologist">Dermatologist</option>
+                      <option value="Cardiologist">Cardiologist</option>
+                      <option value="Internal Medicine">Internal Medicine</option>
+                      <option value="Pediatrician">Pediatrician</option>
+                      <option value="Gynecologist">Gynecologist</option>
+                      <option value="Pulmonologist">Pulmonologist</option>
+                      <option value="Neurologist">Neurologist</option>
+                      <option value="Orthopedic">Orthopedic</option>
+                    </optgroup>
+                  </select>
                   {editFieldErrors.specialty && <p className="text-red-500 text-xs mt-1">{editFieldErrors.specialty}</p>}
                 </div>
                 <div>
@@ -1163,7 +1257,7 @@ const SettingsTab = () => {
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <div className="mb-6">
           <h3 className="font-semibold text-xl text-slate-800">Platform Settings</h3>
-          <p className="text-slate-500 text-sm mt-1">Configure consultation fees per doctor type. Patients pay these amounts via Chapa to unlock a 1-week consultation.</p>
+          <p className="text-slate-500 text-sm mt-1">Configure consultation fees per doctor type. Patients pay these amounts via Chapa to unlock consultation.</p>
         </div>
 
         {loading ? (
@@ -1255,12 +1349,24 @@ const SettingsTab = () => {
   );
 };
 
+const splitFullName = (fullName = '') => {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { first_name: '', last_name: '' };
+  if (parts.length === 1) return { first_name: parts[0], last_name: '' };
+  return { first_name: parts[0], last_name: parts.slice(1).join(' ') };
+};
+
+const buildFullName = (firstName, lastName) =>
+  [firstName, lastName].map((part) => part.trim()).filter(Boolean).join(' ');
+
 const SpecialistsTab = () => {
   const [specialists, setSpecialists] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ name: '', email: '', password: '', work_location: '', specializations: [], role: 'laboratorist' });
+  const [formData, setFormData] = useState({
+    first_name: '', last_name: '', email: '', password: '', work_location: '', specializations: [], role: 'laboratorist',
+  });
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
@@ -1269,8 +1375,11 @@ const SpecialistsTab = () => {
 
   // Edit state
   const [editSpec, setEditSpec] = useState(null);
-  const [editSpecForm, setEditSpecForm] = useState({ name: '', email: '', work_location: '', specializations: [] });
+  const [editSpecForm, setEditSpecForm] = useState({
+    first_name: '', last_name: '', email: '', work_location: '', specializations: [],
+  });
   const [editSpecLoading, setEditSpecLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [editSpecFieldErrors, setEditSpecFieldErrors] = useState({});
 
   const fetchData = async () => {
@@ -1317,8 +1426,16 @@ const SpecialistsTab = () => {
 
     setFormLoading(true);
     try {
-      await api.post('/users', { ...formData, is_verified: true });
-      setFormData({ name: '', email: '', password: '', work_location: '', specializations: [], role: 'laboratorist' });
+      await api.post('/users', {
+        ...formData,
+        first_name: formData.first_name.trim(),
+        last_name: formData.last_name.trim(),
+        name: buildFullName(formData.first_name, formData.last_name),
+        is_verified: true,
+      });
+      setFormData({
+        first_name: '', last_name: '', email: '', password: '', work_location: '', specializations: [], role: 'laboratorist',
+      });
       setFieldErrors({});
       setShowForm(false);
       fetchData();
@@ -1345,8 +1462,10 @@ const SpecialistsTab = () => {
 
   const openEditSpec = (spec) => {
     setEditSpec(spec);
+    const { first_name, last_name } = splitFullName(spec.name || '');
     setEditSpecForm({
-      name: spec.name || '',
+      first_name,
+      last_name,
       email: spec.email || '',
       work_location: spec.work_location || '',
       specializations: spec.specializations || [],
@@ -1366,7 +1485,12 @@ const SpecialistsTab = () => {
 
     setEditSpecLoading(true);
     try {
-      await api.put(`/users/${editSpec.id}`, editSpecForm);
+      await api.put(`/users/${editSpec.id}`, {
+        ...editSpecForm,
+        first_name: editSpecForm.first_name.trim(),
+        last_name: editSpecForm.last_name.trim(),
+        name: buildFullName(editSpecForm.first_name, editSpecForm.last_name),
+      });
       toast.success('Laboratorist/Radiologist updated successfully');
       setEditSpec(null);
       fetchData();
@@ -1406,13 +1530,26 @@ const SpecialistsTab = () => {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">First Name</label>
                 <input
-                  type="text" placeholder="Addisu Gebeyehu"
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.name ? 'border-red-500' : 'border-slate-300'}`}
-                  value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  type="text"
+                  placeholder="Addisu"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.first_name ? 'border-red-500' : 'border-slate-300'}`}
+                  value={formData.first_name}
+                  onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
                 />
-                {fieldErrors.name && <p className="text-red-500 text-xs mt-1">{fieldErrors.name}</p>}
+                {fieldErrors.first_name && <FieldTooltip message={fieldErrors.first_name} />}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Last Name</label>
+                <input
+                  type="text"
+                  placeholder="Gebeyehu"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.last_name ? 'border-red-500' : 'border-slate-300'}`}
+                  value={formData.last_name}
+                  onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                />
+                {fieldErrors.last_name && <FieldTooltip message={fieldErrors.last_name} />}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
@@ -1423,7 +1560,7 @@ const SpecialistsTab = () => {
                   <option value="laboratorist">Laboratorist</option>
                   <option value="radiologist">Radiologist</option>
                 </select>
-                {fieldErrors.role && <p className="text-red-500 text-xs mt-1">{fieldErrors.role}</p>}
+                {fieldErrors.role && <FieldTooltip message={fieldErrors.role} />}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
@@ -1432,7 +1569,7 @@ const SpecialistsTab = () => {
                   className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.email ? 'border-red-500' : 'border-slate-300'}`}
                   value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 />
-                {fieldErrors.email && <p className="text-red-500 text-xs mt-1">{fieldErrors.email}</p>}
+                {fieldErrors.email && <FieldTooltip message={fieldErrors.email} />}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Assigned Work Location / Room</label>
@@ -1441,16 +1578,20 @@ const SpecialistsTab = () => {
                   className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.work_location ? 'border-red-500' : 'border-slate-300'}`}
                   value={formData.work_location} onChange={(e) => setFormData({ ...formData, work_location: e.target.value })}
                 />
-                {fieldErrors.work_location && <p className="text-red-500 text-xs mt-1">{fieldErrors.work_location}</p>}
+                {fieldErrors.work_location && <FieldTooltip message={fieldErrors.work_location} />}
               </div>
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-medium text-slate-700 mb-1">Temporary Password</label>
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white ${fieldErrors.password ? 'border-red-500' : 'border-slate-300'}`}
-                  value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 />
-                {fieldErrors.password && <p className="text-red-500 text-xs mt-1">{fieldErrors.password}</p>}
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer" onClick={() => setShowPassword(!showPassword)}>
+                  {showPassword ? <EyeOff size={20} className="text-slate-500" /> : <Eye size={20} className="text-slate-500" />}
+                </span>
+                {fieldErrors.password && <FieldTooltip message={fieldErrors.password} />}
               </div>
             </div>
             
@@ -1555,22 +1696,36 @@ const SpecialistsTab = () => {
             <form onSubmit={handleEditSpecSubmit} className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Full Name</label>
-                  <input type="text" value={editSpecForm.name} onChange={e => setEditSpecForm({...editSpecForm, name: e.target.value})}
-                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editSpecFieldErrors.name ? 'border-red-500' : 'border-slate-300'}`} />
-                  {editSpecFieldErrors.name && <p className="text-red-500 text-xs mt-1">{editSpecFieldErrors.name}</p>}
+                  <label className="block text-xs font-medium text-slate-600 mb-1">First Name</label>
+                  <input
+                    type="text"
+                    value={editSpecForm.first_name}
+                    onChange={(e) => setEditSpecForm({ ...editSpecForm, first_name: e.target.value })}
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editSpecFieldErrors.first_name ? 'border-red-500' : 'border-slate-300'}`}
+                  />
+                  {editSpecFieldErrors.first_name && <FieldTooltip message={editSpecFieldErrors.first_name} />}
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Last Name</label>
+                  <input
+                    type="text"
+                    value={editSpecForm.last_name}
+                    onChange={(e) => setEditSpecForm({ ...editSpecForm, last_name: e.target.value })}
+                    className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editSpecFieldErrors.last_name ? 'border-red-500' : 'border-slate-300'}`}
+                  />
+                  {editSpecFieldErrors.last_name && <FieldTooltip message={editSpecFieldErrors.last_name} />}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Email</label>
                   <input type="email" value={editSpecForm.email} onChange={e => setEditSpecForm({...editSpecForm, email: e.target.value})}
                     className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editSpecFieldErrors.email ? 'border-red-500' : 'border-slate-300'}`} />
-                  {editSpecFieldErrors.email && <p className="text-red-500 text-xs mt-1">{editSpecFieldErrors.email}</p>}
+                  {editSpecFieldErrors.email && <FieldTooltip message={editSpecFieldErrors.email} />}
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs font-medium text-slate-600 mb-1">Work Location / Room</label>
                   <input type="text" value={editSpecForm.work_location} onChange={e => setEditSpecForm({...editSpecForm, work_location: e.target.value})}
                     className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${editSpecFieldErrors.work_location ? 'border-red-500' : 'border-slate-300'}`} />
-                  {editSpecFieldErrors.work_location && <p className="text-red-500 text-xs mt-1">{editSpecFieldErrors.work_location}</p>}
+                  {editSpecFieldErrors.work_location && <FieldTooltip message={editSpecFieldErrors.work_location} />}
                 </div>
               </div>
               <div>
@@ -1582,7 +1737,7 @@ const SpecialistsTab = () => {
                       {cat.name}
                     </label>
                   ))}
-                  {editSpecFieldErrors.specializations && <p className="text-red-500 text-xs w-full mt-1">{editSpecFieldErrors.specializations}</p>}
+                  {editSpecFieldErrors.specializations && <FieldTooltip message={editSpecFieldErrors.specializations} />}
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-2">

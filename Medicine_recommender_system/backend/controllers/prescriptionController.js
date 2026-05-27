@@ -18,8 +18,8 @@ exports.createPrescription = async (req, res) => {
     if (!consultation) {
       return res.status(404).json({ message: 'Consultation not found' });
     }
-    if (['completed', 'closing_soon', 'prescription_submitted'].includes(consultation.status)) {
-      return res.status(400).json({ message: 'Cannot prescribe on a case that is already closing or completed.' });
+    if (['completed', 'closing_soon', 'prescription_submitted', 'referred', 'archived'].includes(consultation.status)) {
+      return res.status(400).json({ message: 'Cannot prescribe on a case that is already referred, closing, or completed.' });
     }
     if (consultation.doctor_id !== doctor_id) {
       return res.status(403).json({ message: 'Not authorized for this consultation' });
@@ -70,8 +70,8 @@ exports.createPrescription = async (req, res) => {
     const { sendPushNotification } = require('../utils/pushHelper');
     await sendPushNotification(
       patient_id,
-      'Prescription Ready',
-      'Your doctor has submitted a prescription. Your case will close in 24 hours.',
+      'Prescription Received — Follow-up Active',
+      'Your doctor has submitted your prescription. You have 24 hours to ask any follow-up questions before the chat closes.',
       'prescription',
       '/consultations'
     );

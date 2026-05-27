@@ -5,7 +5,7 @@
  * Rules:
  *  - One reason → exactly one doctor type
  *  - GP is always the fallback for unclear or safety-first cases
- *  - Heart/chest → GP (safety-first, not Cardiologist directly)
+ *  - Heart/chest → Cardiologist (specialist direct routing)
  *  - Not sure / Other → GP
  *
  * Keep this file in sync with frontend/src/utils/triageRules.js
@@ -32,9 +32,9 @@ const TRIAGE_REASONS = [
     key: 'heart_chest',
     label: 'Heart / chest issues',
     description: 'Chest pain, palpitations, shortness of breath',
-    doctorType: 'gp',
-    specialty: null,
-    routingNote: 'Chest and heart symptoms require an initial GP assessment for safety.',
+    doctorType: 'specialist',
+    specialty: 'Cardiologist',
+    routingNote: 'Heart and chest symptoms are best evaluated by a Cardiologist.',
   },
   {
     key: 'general_illness',

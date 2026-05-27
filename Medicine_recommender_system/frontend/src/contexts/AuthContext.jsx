@@ -39,20 +39,22 @@ export const AuthProvider = ({ children }) => {
   const register = async (userData) => {
     try {
       const {
-        name, email, password, role, phone_number,
+        name, first_name, last_name, email, password, role, phone_number,
         document, selfie, id_document, degree_document, experience_document,
         license_number, license_issuing_authority, license_expiry_date,
         specialty,
         degree, university_name, graduation_year, experience_years, current_workplace,
         age, sex
       } = userData;
+      const fullName = (name && name.trim())
+        || [first_name, last_name].filter(Boolean).join(' ').trim();
 
       let data;
       let headers = { 'Content-Type': 'application/json' };
 
       if (role === 'doctor') {
         data = new FormData();
-        data.append('name', name);
+        data.append('name', fullName);
         data.append('email', email);
         data.append('password', password);
         data.append('role', role);
@@ -77,7 +79,7 @@ export const AuthProvider = ({ children }) => {
 
         headers = { 'Content-Type': 'multipart/form-data' };
       } else {
-        data = { name, email, password, role, phone_number, age, sex };
+        data = { name: fullName, email, password, role, phone_number, age, sex };
       }
 
       const res = await api.post('/auth/register', data, { headers });

@@ -48,7 +48,12 @@ const ChatMessage = sequelize.define('ChatMessage', {
   is_deleted_everyone: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
-  }
+  },
+  read_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'When the recipient opened/read this message',
+  },
 }, {
   timestamps: true, // Adds createdAt automatically for timestamping
   createdAt: 'timestamp',

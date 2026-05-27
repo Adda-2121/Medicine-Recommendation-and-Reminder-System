@@ -4,10 +4,11 @@ import api from '../services/api';
 import {
   Brain, Microscope, Heart, Stethoscope, Baby, Flower2,
   Wind, Zap, Bone, HelpCircle, ChevronRight, ChevronLeft,
-  Star, Clock, CheckCircle, AlertCircle, ArrowRight,
+  Star, CheckCircle, AlertCircle, ArrowRight,
   Activity, RefreshCw, MessageSquare, Users
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useTranslation } from 'react-i18next';
 import { TRIAGE_REASONS, triageRoute } from '../utils/triageRules';
 
 // Map triage keys to lucide icons
@@ -25,11 +26,11 @@ const REASON_ICONS = {
 };
 
 // Step indicator component
-const StepIndicator = ({ current }) => {
+const StepIndicator = ({ current, t }) => {
   const steps = [
-    { n: 1, label: 'Describe' },
-    { n: 2, label: 'Match' },
-    { n: 3, label: 'Confirm' },
+    { n: 1, label: t('findDoctor.steps.describe') },
+    { n: 2, label: t('findDoctor.steps.match') },
+    { n: 3, label: t('findDoctor.steps.confirm') },
   ];
   return (
     <div className="flex items-center justify-center gap-0 mb-8">
@@ -59,18 +60,18 @@ const StepIndicator = ({ current }) => {
 };
 
 // Helper: format wait time
-const formatWait = (mins) => {
-  if (mins === 0) return 'Ready now';
-  if (mins < 60) return `~${mins} min wait`;
+const formatWait = (mins, t) => {
+  if (mins === 0) return t('findDoctor.doctorCard.readyNow');
+  if (mins < 60) return t('findDoctor.doctorCard.minWait', { mins });
   const h = Math.floor(mins / 60);
   const m = mins % 60;
-  return m > 0 ? `~${h}h ${m}m wait` : `~${h}h wait`;
+  return m > 0 ? t('findDoctor.doctorCard.hmWait', { h, m }) : t('findDoctor.doctorCard.hWait', { h });
 };
 
 // Doctor card used in step 2
-const DoctorCard = ({ doctor, selected, onSelect }) => {
+const DoctorCard = ({ doctor, selected, onSelect, t }) => {
   const queue = doctor.activeQueueCount ?? 0;
-  const waitMins = doctor.estimatedWaitMins ?? 0;
+
 
   return (
     <button
@@ -100,32 +101,30 @@ const DoctorCard = ({ doctor, selected, onSelect }) => {
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <p className="font-semibold text-slate-800 text-sm truncate">Dr. {doctor.name}</p>
-              {selected && <CheckCircle size={15} className="text-primary-600 shrink-0" />}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${status.className}`}>
+                  {status.label}
+                </span>
+                {selected && <CheckCircle size={15} className="text-primary-600" />}
+              </div>
             </div>
-            <p className="text-xs text-primary-600 font-medium mt-0.5">{doctor.specialty || 'General Practitioner'}</p>
+            <p className="text-xs text-primary-600 font-medium mt-0.5">
+              {doctor.specialty ? t(`findDoctor.specialties.${doctor.specialty.toLowerCase().replace(/ /g, '_')}`, { defaultValue: doctor.specialty }) : t('findDoctor.specialties.gp')}
+            </p>
 
             {/* Queue row */}
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <span className="inline-flex items-center gap-1 text-xs text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
                 <Users size={10} />
-                {queue === 0 ? 'No queue' : `${queue} in queue`}
+                {queue === 0 ? t('findDoctor.doctorCard.noQueue') : t('findDoctor.doctorCard.inQueue', { count: queue })}
               </span>
             </div>
 
-            {/* Wait time + meta row */}
+            {/* Meta row */}
             <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-              {/* Estimated wait */}
-              <span className={`inline-flex items-center gap-1 text-xs font-medium ${
-                waitMins === 0 ? 'text-emerald-600' : 'text-slate-500'
-              }`}>
-                <Clock size={10} />
-                {formatWait(waitMins)}
-              </span>
-
-              {/* Experience */}
               {doctor.experience_years > 0 && (
                 <span className="text-xs text-slate-400">
-                  {doctor.experience_years}y exp
+                  {t('findDoctor.doctorCard.yearsExp', { years: doctor.experience_years })}
                 </span>
               )}
 
@@ -146,6 +145,7 @@ const DoctorCard = ({ doctor, selected, onSelect }) => {
 };
 
 const FindDoctor = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   // ── Step state ──────────────────────────────────────────────────────────────
@@ -175,7 +175,7 @@ const FindDoctor = () => {
       });
       setDoctors(res.data);
     } catch {
-      toast.error('Could not load doctors. Please try again.');
+      toast.error(t('findDoctor.step2.errorLoadDoctors', { defaultValue: 'Could not load doctors. Please try again.' }));
       setDoctors([]);
     } finally {
       setLoadingDoctors(false);
@@ -184,7 +184,7 @@ const FindDoctor = () => {
 
   useEffect(() => {
     if (step === 2 && triageResult) {
-      const spec = useGpOverride ? null : triageResult.specialty;
+      const spec = useGpOverride ? 'General Practitioner' : triageResult.specialty;
       fetchDoctors(spec);
     }
   }, [step, triageResult, useGpOverride, fetchDoctors]);
@@ -192,7 +192,7 @@ const FindDoctor = () => {
   // Auto-refresh doctor list every 30s while on step 2
   useEffect(() => {
     if (step !== 2 || !triageResult) return;
-    const spec = useGpOverride ? null : triageResult.specialty;
+    const spec = useGpOverride ? 'General Practitioner' : triageResult.specialty;
     const interval = setInterval(() => {
       // Silent refresh — don't show loading spinner for auto-refresh
       api.get('/users/doctors', { params: spec ? { specialization: spec } : {} })
@@ -205,7 +205,7 @@ const FindDoctor = () => {
   // ── Step 1 → 2: run triage ─────────────────────────────────────────────────
   const handleTriage = () => {
     if (!selectedReason) {
-      toast.error('Please select a reason for your visit.');
+      toast.error(t('findDoctor.errorSelectReason'));
       return;
     }
     const result = triageRoute(selectedReason.key);
@@ -217,7 +217,7 @@ const FindDoctor = () => {
   // ── Step 2 → 3: confirm doctor ─────────────────────────────────────────────
   const handleConfirmDoctor = () => {
     if (!selectedDoctor) {
-      toast.error('Please select a doctor to continue.');
+      toast.error(t('findDoctor.errorSelectDoctor'));
       return;
     }
     setStep(3);
@@ -227,7 +227,7 @@ const FindDoctor = () => {
   const handleBooking = async () => {
     if (!selectedDoctor || !triageResult) return;
     const finalType = useGpOverride ? 'gp' : (triageResult.doctorType || 'gp');
-    const finalSpecialty = useGpOverride ? null : (triageResult.specialty || null);
+    const finalSpecialty = useGpOverride ? 'General Practitioner' : (triageResult.specialty || 'General Practitioner');
 
     try {
       setIsSubmitting(true);
@@ -240,7 +240,7 @@ const FindDoctor = () => {
         target_specialty: finalSpecialty,
         assigned_specialization: finalSpecialty || 'General Practitioner',
       });
-      toast.success('Consultation requested! Please complete payment to confirm.');
+      toast.success(t('findDoctor.success'));
       navigate('/consultations');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Booking failed. Please try again.');
@@ -269,21 +269,21 @@ const FindDoctor = () => {
 
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">Find the Right Doctor</h1>
+          <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">{t('findDoctor.pageTitle')}</h1>
           <p className="text-slate-500 mt-2 text-sm max-w-md mx-auto">
-            Answer a few quick questions and we'll match you with the right specialist automatically.
+            {t('findDoctor.pageSubtitle')}
           </p>
         </div>
 
         {/* Step indicator */}
-        <StepIndicator current={step} />
+        <StepIndicator current={step} t={t} />
 
         {/* ── STEP 1: Triage Form ── */}
         {step === 1 && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-6 pt-6 pb-4 border-b border-slate-100">
-              <h2 className="text-lg font-bold text-slate-800">What brings you in today?</h2>
-              <p className="text-sm text-slate-500 mt-0.5">Select the option that best describes your concern.</p>
+              <h2 className="text-lg font-bold text-slate-800">{t('findDoctor.step1.title')}</h2>
+              <p className="text-sm text-slate-500 mt-0.5">{t('findDoctor.step1.subtitle')}</p>
             </div>
 
             <div className="p-6 space-y-6">
@@ -311,9 +311,9 @@ const FindDoctor = () => {
                       </div>
                       <div>
                         <p className={`text-sm font-semibold leading-tight ${isSelected ? 'text-primary-700' : 'text-slate-700'}`}>
-                          {reason.label}
+                          {t(`findDoctor.reasons.${reason.key}.label`)}
                         </p>
-                        <p className="text-xs text-slate-400 mt-0.5 leading-snug line-clamp-2">{reason.description}</p>
+                        <p className="text-xs text-slate-400 mt-0.5 leading-snug line-clamp-2">{t(`findDoctor.reasons.${reason.key}.description`)}</p>
                       </div>
                       {isSelected && (
                         <div className="absolute top-2 right-2">
@@ -333,19 +333,19 @@ const FindDoctor = () => {
               {/* Symptoms textarea */}
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  Describe Your Symptoms
-                  <span className="ml-2 text-xs font-normal text-slate-400">(optional)</span>
+                  {t('findDoctor.step1.symptomsLabel')}
+                  <span className="ml-2 text-xs font-normal text-slate-400">({t('common.optional')})</span>
                 </label>
                 <textarea
                   rows={4}
                   className="w-full px-4 py-3 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-400 resize-none placeholder:text-slate-400 transition"
-                  placeholder="Describe your symptoms, duration, pain level, or any important details…"
+                  placeholder={t('findDoctor.step1.symptomsPlaceholder')}
                   value={symptomsText}
                   onChange={e => setSymptomsText(e.target.value)}
                 />
                 <p className="text-xs text-slate-400 mt-1.5 flex items-center gap-1">
                   <AlertCircle size={11} />
-                  This text is for your doctor's reference only and does not affect routing.
+                  {t('findDoctor.step1.symptomsNote')}
                 </p>
               </div>
 
@@ -356,7 +356,7 @@ const FindDoctor = () => {
                 disabled={!selectedReason}
                 className="w-full py-3.5 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-sm disabled:shadow-none"
               >
-                Find My Doctor
+                {t('findDoctor.step1.submit')}
                 <ArrowRight size={18} />
               </button>
             </div>
@@ -379,18 +379,18 @@ const FindDoctor = () => {
                   <Stethoscope size={20} />
                 </div>
                 <div className="flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-0.5">Recommended Doctor Type</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-0.5">{t('findDoctor.step2.recommendedTitle')}</p>
                   <p className={`text-xl font-extrabold ${useGpOverride ? 'text-amber-700' : 'text-primary-700'}`}>
-                    {effectiveSpecialty}
+                    {useGpOverride ? t('findDoctor.specialties.gp') : t(`findDoctor.specialties.${triageResult.specialty.toLowerCase().replace(/ /g, '_')}`, { defaultValue: triageResult.specialty })}
                   </p>
                   <p className="text-sm text-slate-600 mt-1 leading-relaxed">
                     {useGpOverride
-                      ? 'You chose to see a General Practitioner first. They can refer you to a specialist if needed.'
-                      : triageResult.routingNote}
+                      ? t('findDoctor.step2.gpNote')
+                      : t(`findDoctor.reasons.${selectedReason?.key}.routingNote`)}
                   </p>
                   <div className="flex items-center gap-2 mt-2">
                     <span className="text-xs bg-white/80 border border-slate-200 text-slate-600 px-2.5 py-1 rounded-full font-medium">
-                      {selectedReason?.emoji} {selectedReason?.label}
+                      {selectedReason?.emoji} {t(`findDoctor.reasons.${selectedReason?.key}.label`)}
                     </span>
                   </div>
                 </div>
@@ -403,7 +403,7 @@ const FindDoctor = () => {
                   onClick={() => setUseGpOverride(true)}
                   className="mt-3 text-xs text-slate-500 hover:text-slate-700 underline underline-offset-2"
                 >
-                  I'd prefer to see a GP first instead
+                  {t('findDoctor.step2.preferGp')}
                 </button>
               )}
               {useGpOverride && (
@@ -412,7 +412,7 @@ const FindDoctor = () => {
                   onClick={() => setUseGpOverride(false)}
                   className="mt-3 text-xs text-primary-600 hover:text-primary-800 underline underline-offset-2 flex items-center gap-1"
                 >
-                  <ChevronLeft size={12} /> Back to recommended: {triageResult.specialty}
+                  <ChevronLeft size={12} /> {t('findDoctor.step2.backToRecommended', { specialty: t(`findDoctor.specialties.${triageResult.specialty.toLowerCase().replace(/ /g, '_')}`, { defaultValue: triageResult.specialty }) })}
                 </button>
               )}
             </div>
@@ -422,16 +422,18 @@ const FindDoctor = () => {
               <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-slate-800 text-sm">
-                    {loadingDoctors ? 'Finding doctors…' : `${doctors.length} Doctor${doctors.length !== 1 ? 's' : ''} Found`}
+                    {loadingDoctors ? t('findDoctor.step2.loadingDoctors') : t('findDoctor.step2.doctorsFound', { count: doctors.length })}
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Showing {effectiveSpecialty} specialists</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {t('findDoctor.step2.showingSpecialists', { specialty: useGpOverride ? t('findDoctor.specialties.gp') : t(`findDoctor.specialties.${triageResult.specialty.toLowerCase().replace(/ /g, '_')}`, { defaultValue: triageResult.specialty }) })}
+                  </p>
                 </div>
                 {/* Refresh button */}
                 {!loadingDoctors && doctors.length > 0 && (
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={() => fetchDoctors(useGpOverride ? null : triageResult.specialty)}
+                      onClick={() => fetchDoctors(useGpOverride ? 'General Practitioner' : triageResult.specialty)}
                       className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition ml-1"
                       title="Refresh"
                     >
@@ -454,17 +456,34 @@ const FindDoctor = () => {
                 ) : doctors.length === 0 ? (
                   <div className="text-center py-10">
                     <Activity size={36} className="mx-auto text-slate-300 mb-3" />
-                    <p className="text-slate-600 font-medium text-sm">No {effectiveSpecialty} doctors available right now</p>
-                    <p className="text-slate-400 text-xs mt-1">Try switching to a GP — they can refer you once available.</p>
-                    {!useGpOverride && (
+                    <p className="text-slate-600 font-medium text-sm">
+                      {t('findDoctor.step2.noDoctors', { specialty: useGpOverride ? t('findDoctor.specialties.gp') : t(`findDoctor.specialties.${triageResult.specialty.toLowerCase().replace(/ /g, '_')}`, { defaultValue: triageResult.specialty }) })}
+                    </p>
+                    <p className="text-slate-400 text-xs mt-1">
+                      {t('findDoctor.step2.noDoctorsDesc')}
+                    </p>
+                    <div className="flex flex-col gap-2 max-w-xs mx-auto mt-4">
                       <button
                         type="button"
-                        onClick={() => setUseGpOverride(true)}
-                        className="mt-3 text-sm text-primary-600 hover:text-primary-800 font-medium underline"
+                        onClick={() => {
+                          setSelectedDoctor({ id: null, name: 'First Available', specialty: effectiveSpecialty });
+                          setStep(3);
+                        }}
+                        className="py-2.5 bg-primary-600 text-white rounded-lg font-bold text-sm shadow-sm hover:bg-primary-700 transition"
                       >
-                        See available GPs instead
+                        {t('findDoctor.step2.bookAwaiting', { defaultValue: 'Book — Assign Next Available' })}
                       </button>
-                    )}
+
+                      {!useGpOverride && (
+                        <button
+                          type="button"
+                          onClick={() => setUseGpOverride(true)}
+                          className="py-2 border border-slate-200 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-50 transition"
+                        >
+                          {t('findDoctor.step2.seeGps')}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -474,6 +493,7 @@ const FindDoctor = () => {
                         doctor={doc}
                         selected={selectedDoctor?.id === doc.id}
                         onSelect={setSelectedDoctor}
+                        t={t}
                       />
                     ))}
                   </div>
@@ -488,7 +508,7 @@ const FindDoctor = () => {
                 onClick={handleReset}
                 className="flex-1 py-3 border border-slate-300 text-slate-600 hover:bg-slate-50 font-medium rounded-xl transition flex items-center justify-center gap-2"
               >
-                <ChevronLeft size={16} /> Start Over
+                <ChevronLeft size={16} /> {t('findDoctor.step2.startOver')}
               </button>
               <button
                 type="button"
@@ -496,7 +516,7 @@ const FindDoctor = () => {
                 disabled={!selectedDoctor}
                 className="flex-[2] py-3 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
               >
-                Continue with Dr. {selectedDoctor?.name || '…'}
+                {t('findDoctor.step2.continueWith', { name: selectedDoctor?.name || '…' })}
                 <ChevronRight size={16} />
               </button>
             </div>
@@ -509,34 +529,26 @@ const FindDoctor = () => {
             {/* Summary card */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
               <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-5 text-white">
-                <p className="text-xs font-semibold uppercase tracking-wider opacity-80 mb-1">Booking Summary</p>
-                <h2 className="text-xl font-extrabold">Confirm Your Appointment</h2>
+                <p className="text-xs font-semibold uppercase tracking-wider opacity-80 mb-1">{t('findDoctor.step3.summaryTitle')}</p>
+                <h2 className="text-xl font-extrabold">{t('findDoctor.step3.title')}</h2>
               </div>
 
               <div className="p-6 space-y-4">
                 {/* Doctor */}
                 <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                  <div className="h-14 w-14 bg-primary-600 rounded-full flex items-center justify-center text-white font-bold text-xl uppercase shrink-0">
-                    {selectedDoctor.name.charAt(0)}
+                  <div className={`h-14 w-14 ${selectedDoctor.id ? 'bg-primary-600' : 'bg-slate-400'} rounded-full flex items-center justify-center text-white font-bold text-xl uppercase shrink-0`}>
+                    {selectedDoctor.id ? selectedDoctor.name.charAt(0) : <Users size={24} />}
                   </div>
                   <div className="flex-1">
-                    <p className="font-bold text-slate-800">Dr. {selectedDoctor.name}</p>
-                    <p className="text-sm text-primary-600 font-medium">{selectedDoctor.specialty || 'General Practitioner'}</p>
+                    <p className="font-bold text-slate-800">{selectedDoctor.id ? `Dr. ${selectedDoctor.name}` : 'Awaiting Professional Assignment'}</p>
+                    <p className="text-sm text-primary-600 font-medium">
+                      {selectedDoctor.specialty ? t(`findDoctor.specialties.${selectedDoctor.specialty.toLowerCase().replace(/ /g, '_')}`, { defaultValue: selectedDoctor.specialty }) : t('findDoctor.specialties.gp')}
+                    </p>
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       {selectedDoctor.activeQueueCount !== undefined && (
                         <span className="text-xs text-slate-500 flex items-center gap-1 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
                           <Users size={10} />
-                          {selectedDoctor.activeQueueCount === 0 ? 'No queue' : `${selectedDoctor.activeQueueCount} in queue`}
-                        </span>
-                      )}
-                      {selectedDoctor.estimatedWaitMins !== undefined && (
-                        <span className={`text-xs flex items-center gap-1 px-2 py-0.5 rounded-full border ${
-                          selectedDoctor.estimatedWaitMins === 0
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold'
-                            : 'bg-slate-100 text-slate-500 border-slate-200'
-                        }`}>
-                          <Clock size={10} />
-                          {formatWait(selectedDoctor.estimatedWaitMins)}
+                          {selectedDoctor.activeQueueCount === 0 ? t('findDoctor.doctorCard.noQueue') : t('findDoctor.doctorCard.inQueue', { count: selectedDoctor.activeQueueCount })}
                         </span>
                       )}
                       {selectedDoctor.averageRating > 0 && (
@@ -552,12 +564,14 @@ const FindDoctor = () => {
                 {/* Triage details */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-1">Reason</p>
-                    <p className="text-sm font-semibold text-slate-700">{selectedReason?.label}</p>
+                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-1">{t('findDoctor.step3.labels.reason')}</p>
+                    <p className="text-sm font-semibold text-slate-700">{t(`findDoctor.reasons.${selectedReason?.key}.label`)}</p>
                   </div>
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-1">Routed To</p>
-                    <p className="text-sm font-semibold text-primary-700">{effectiveSpecialty}</p>
+                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-1">{t('findDoctor.step3.labels.routedTo')}</p>
+                    <p className="text-sm font-semibold text-primary-700">
+                      {useGpOverride ? t('findDoctor.specialties.gp') : t(`findDoctor.specialties.${triageResult.specialty.toLowerCase().replace(/ /g, '_')}`, { defaultValue: triageResult.specialty })}
+                    </p>
                   </div>
                 </div>
 
@@ -565,7 +579,7 @@ const FindDoctor = () => {
                 {symptomsText && (
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                     <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-1 flex items-center gap-1">
-                      <MessageSquare size={10} /> Symptoms Note
+                      <MessageSquare size={10} /> {t('findDoctor.step3.labels.symptomsNote')}
                     </p>
                     <p className="text-sm text-slate-600 leading-relaxed line-clamp-3">{symptomsText}</p>
                   </div>
@@ -575,7 +589,7 @@ const FindDoctor = () => {
                 <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl">
                   <AlertCircle size={14} className="text-blue-500 mt-0.5 shrink-0" />
                   <p className="text-xs text-blue-700 leading-relaxed">
-                    After confirming, you'll be directed to complete payment. Your consultation will be assigned once payment is verified.
+                    {t('findDoctor.step3.infoNote')}
                   </p>
                 </div>
               </div>
@@ -588,7 +602,7 @@ const FindDoctor = () => {
                 onClick={() => setStep(2)}
                 className="flex-1 py-3 border border-slate-300 text-slate-600 hover:bg-slate-50 font-medium rounded-xl transition flex items-center justify-center gap-2"
               >
-                <ChevronLeft size={16} /> Back
+                <ChevronLeft size={16} /> {t('common.back')}
               </button>
               <button
                 type="button"
@@ -598,11 +612,11 @@ const FindDoctor = () => {
               >
                 {isSubmitting ? (
                   <>
-                    <RefreshCw size={16} className="animate-spin" /> Booking…
+                    <RefreshCw size={16} className="animate-spin" /> {t('findDoctor.step3.booking')}
                   </>
                 ) : (
                   <>
-                    <CheckCircle size={16} /> Confirm Booking
+                    <CheckCircle size={16} /> {t('findDoctor.step3.confirm')}
                   </>
                 )}
               </button>
