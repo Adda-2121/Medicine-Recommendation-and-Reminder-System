@@ -50,7 +50,7 @@ export const AuthProvider = ({ children }) => {
         || [first_name, last_name].filter(Boolean).join(' ').trim();
 
       let data;
-      let headers = { 'Content-Type': 'application/json' };
+      const config = {};
 
       if (role === 'doctor') {
         data = new FormData();
@@ -76,16 +76,15 @@ export const AuthProvider = ({ children }) => {
         if (id_document) data.append('id_document', id_document);
         if (degree_document) data.append('degree_document', degree_document);
         if (experience_document) data.append('experience_document', experience_document);
-
-        headers = { 'Content-Type': 'multipart/form-data' };
       } else {
         data = { name: fullName, email, password, role, phone_number, age, sex };
+        config.headers = { 'Content-Type': 'application/json' };
       }
 
-      const res = await api.post('/auth/register', data, { headers });
+      const res = await api.post('/auth/register', data, config);
       return res.data;
     } catch (err) {
-      throw err.response?.data?.message || 'Registration failed';
+      throw err;
     }
   };
 

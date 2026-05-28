@@ -7,6 +7,7 @@ import { Microscope, Clock, CheckCircle, FileText, UploadCloud, User, Stethoscop
 import toast from 'react-hot-toast';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import { uploadResultSchema, formatZodErrors } from '../utils/validationSchemas';
+import { useTranslation } from 'react-i18next';
 
 const SOCKET_URL = import.meta.env.VITE_API_URL
   ? import.meta.env.VITE_API_URL.replace('/api', '')
@@ -14,6 +15,7 @@ const SOCKET_URL = import.meta.env.VITE_API_URL
 
 const SpecialistDashboard = () => {
   const { user } = useContext(AuthContext);
+const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState('pending');
   const [requests, setRequests] = useState([]);
@@ -252,9 +254,9 @@ const SpecialistDashboard = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-slate-800 flex items-center capitalize">
-            <Microscope className="mr-3 text-primary-600" /> {user.role} Dashboard
+            <Microscope className="mr-3 text-primary-600" /> {t('specialist.title', { role: user.role })}
           </h1>
-          <p className="text-slate-500 mt-1">Manage requested services, track patient queue, and upload results.</p>
+          <p className="text-slate-500 mt-1">{t('specialist.subtitle')}</p>
         </div>
       </div>
 
@@ -262,14 +264,14 @@ const SpecialistDashboard = () => {
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex items-center">
           <div className="bg-amber-100 text-amber-600 p-4 rounded-full mr-4"><Clock size={24} /></div>
           <div>
-            <p className="text-slate-500 font-medium text-sm">Pending Patients in Queue</p>
+            <p className="text-slate-500 font-medium text-sm">{t('specialist.stats.pendingQueue')}</p>
             <h2 className="text-2xl font-bold text-slate-800">{pendingReqs.length}</h2>
           </div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex items-center">
           <div className="bg-blue-100 text-blue-600 p-4 rounded-full mr-4"><FileText size={24} /></div>
           <div>
-            <p className="text-slate-500 font-medium text-sm">Services Pending Analysis</p>
+            <p className="text-slate-500 font-medium text-sm">{t('specialist.stats.pendingAnalysis')}</p>
             <h2 className="text-2xl font-bold text-slate-800">{inProgressReqs.length}</h2>
           </div>
         </div>
@@ -281,13 +283,13 @@ const SpecialistDashboard = () => {
             onClick={() => setActiveTab('pending')}
             className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${activeTab === 'pending' ? 'bg-white text-primary-700 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'}`}
           >
-            Queue ({requests.length})
+            {t('specialist.tabs.queue')} ({requests.length})
           </button>
           <button
             onClick={() => setActiveTab('history')}
             className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${activeTab === 'history' ? 'bg-white text-primary-700 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'}`}
           >
-            History ({historyRequests.length})
+            {t('specialist.tabs.history')} ({historyRequests.length})
           </button>
         </div>
 
@@ -375,8 +377,8 @@ const SpecialistDashboard = () => {
           ) : (
             <div className="text-center p-12 bg-slate-50 rounded-xl border border-dashed border-slate-300">
               <Activity className="mx-auto text-slate-300 mb-3" size={48} />
-              <p className="text-xl font-bold text-slate-700">No active service requests</p>
-              <p className="text-slate-500 mt-1">Currently all catch up! There are no pending requests.</p>
+              <p className="text-xl font-bold text-slate-700">{t('specialist.empty.noRequests')}</p>
+                              <p className="text-slate-500 mt-1">{t('specialist.empty.noRequestsMsg')}</p>
             </div>
           )}
         </div>
@@ -471,7 +473,7 @@ const SpecialistDashboard = () => {
                     onClick={() => handleStartTest(selectedReq.id)}
                     className="mt-4 text-xs font-bold bg-white border border-primary-200 text-primary-700 px-3 py-1.5 rounded-lg shadow-sm hover:bg-primary-100 transition"
                   >
-                    Start Analysis
+                    {t('specialist.btn.startAnalysis')}
                   </button>
                 )}
               </div>

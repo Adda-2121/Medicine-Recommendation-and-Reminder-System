@@ -1,8 +1,9 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Clock, CheckCircle, Mail, FileText, ShieldCheck } from 'lucide-react';
 
-const PendingVerification = () => {
+const PendingVerification = () => { const { t } = useTranslation();
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-primary-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-8 text-center border border-slate-100">
@@ -86,7 +87,7 @@ const PendingVerification = () => {
             to="/"
             className="w-full border border-slate-200 text-slate-600 font-medium py-3 rounded-lg hover:bg-slate-50 transition text-sm"
           >
-            Back to Home
+            {t('backToHome')}
           </Link>
         </div>
       </div>

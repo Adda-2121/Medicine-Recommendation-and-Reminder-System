@@ -2,6 +2,7 @@
   "common": {
     "cancel": "Cancel",
     "back": "Back",
+    "backToHome": "Back to Home",
     "next": "Next",
     "save": "Save",
     "delete": "Delete",
@@ -321,7 +322,9 @@
       "onlineCare": "Online Care"
     },
     "features": {
+      "sectionLabel": "Platform Features",
       "title": "Core Features",
+      "description": "Discover the powerful features that make healthcare accessible and efficient.",
       "findDoctors": "Find Doctors",
       "findDoctorsDesc": "Easily search and connect with qualified specialists near you.",
       "liveConsultations": "Live Consultations",
@@ -330,10 +333,17 @@
       "smartRemindersDesc": "Never miss a dose with our intelligent medication tracking."
     },
     "about": {
+      "headerLabel": "About HealthConnect",
       "title": "About Us",
+      "heroDesc": "Transforming healthcare delivery through innovative technology and compassionate care.",
+      "storyLabel": "Our Story",
       "welcome": "Welcome to our healthcare System: a modern digital solution designed to make healthcare services more accessible, efficient, and reliable for everyone.",
       "connection": "Our system connects patients, doctors, laboratorists, and radiologists through a secure and intelligent online environment that supports consultation, laboratory services, radiology requests, digital prescriptions, medication reminders, and real-time communication.",
       "commitment": "We are committed to improving healthcare accessibility by enabling patients to receive professional medical support anytime and anywhere. Through advanced technologies such as smart patient prioritization, integrated laboratory and radiology workflows, online payments, notifications, and secure medical record management, our platform delivers a seamless healthcare experience.",
+      "cardHappyPatients": "Happy Patients",
+      "cardExpertDoctors": "Expert Doctors",
+      "cardSupport": "Support",
+      "missionHeading": "Our Mission",
       "mission": "Our mission is to enhance the quality of healthcare services by reducing delays, improving communication between healthcare professionals and patients, and ensuring efficient case management from consultation to diagnosis and treatment.",
       "prioritize": {
         "title": "We prioritize:",
@@ -345,14 +355,38 @@
           "User-friendly and accessible healthcare services"
         ]
       },
+      "visionHeading": "Our Vision",
       "vision": "Our vision is to build a trusted digital healthcare ecosystem that simplifies medical services and supports better healthcare outcomes for communities everywhere.",
-      "closing": "Together, we are transforming healthcare through innovation, connectivity, and professionalism."
+      "closing": "Together, we are transforming healthcare through innovation, connectivity, and professionalism.",
+      "ctaButton": "Join Our Healthcare Community",
+      "badgeVerified": "Verified Professionals",
+      "badgeSecure": "Secure Platform",
+      "badgeAlwaysAvailable": "24/7 Available"
     },
     "contact": {
       "title": "Contact Support",
+      "subtitle": "Send a Message",
       "desc": "Have questions or need assistance with your account? We're here to help.",
+      "sectionLabel": "Reach Out",
+      "sectionTitle": "We are here to help",
+      "sectionDescription": "Fill in your details and write your message. For faster replies, use the contact links in the footer.",
+      "footerNote": "Our team reviews messages promptly and will get back to you within 24 hours.",
       "emailButton": "Email Support"
     }
+  },
+  "contactForm": {
+    "nameLabel": "Full Name",
+    "namePlaceholder": "Your full name",
+    "emailLabel": "Email address",
+    "emailPlaceholder": "you@example.com",
+    "subjectLabel": "Subject",
+    "subjectPlaceholder": "What can we help you with?",
+    "messageLabel": "Message",
+    "messagePlaceholder": "Tell us how we can support you or collaborate together.",
+    "submitButton": "Send Message",
+    "submitButtonLoading": "Sending...",
+    "validationError": "Please complete your name, email, and message before sending.",
+    "mailtoNotice": "Opening your email client to send the message."
   },
   "auth": {
     "login": {

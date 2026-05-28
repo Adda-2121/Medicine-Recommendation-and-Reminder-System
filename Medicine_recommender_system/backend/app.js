@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const multer = require('multer');
 
 const app = express();
 const authRoutes = require('./routes/authRoutes');
@@ -55,6 +56,20 @@ app.use('/api/triage', triageRoutes);
 // Basic route
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'success', message: 'API is running' });
+});
+
+// Error handler for upload and runtime errors
+app.use((err, req, res, next) => {
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  const message = err.message || 'Server error';
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({ success: false, message });
+  }
+
+  res.status(err.status || 500).json({ success: false, message });
 });
 
 module.exports = app;

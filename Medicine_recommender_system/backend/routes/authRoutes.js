@@ -64,9 +64,8 @@ router.post('/register',
   register
 );
 
-// Login route with validation and rate limiting
+// Login route with validation
 router.post('/login',
-  checkRateLimit('login', 5, 15 * 60 * 1000), // 5 attempts per 15 minutes
   sanitizeInput,
   loginValidation(),
   handleValidationErrors,

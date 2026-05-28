@@ -70,7 +70,7 @@ const phoneValidation = (isRequired = false) => {
 // Age validation rules
 const ageValidation = () => [
   body('age')
-    .notEmpty().withMessage('Please fill in your age')
+    .optional({ checkFalsy: true })
     .isInt({ min: 1, max: 150 }).withMessage('Age must be between 1 and 150')
     .toInt()
 ];
@@ -78,7 +78,7 @@ const ageValidation = () => [
 // Gender validation rules
 const genderValidation = () => [
   body('sex')
-    .notEmpty().withMessage('Please select your gender')
+    .optional({ checkFalsy: true })
     .isIn(['Male', 'Female']).withMessage('Gender must be Male or Female')
 ];
 
@@ -86,7 +86,7 @@ const genderValidation = () => [
 const roleValidation = () => [
   body('role')
     .notEmpty().withMessage('Please select your role')
-    .isIn(['patient', 'doctor', 'laboratorist', 'radiologist', 'admin']).withMessage('Invalid role selected')
+    .isIn(['patient', 'doctor', 'laboratorist', 'radiologist']).withMessage('Invalid role selected')
 ];
 
 // Confirm password validation

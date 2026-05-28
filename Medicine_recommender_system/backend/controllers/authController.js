@@ -6,6 +6,44 @@ const { User, sequelize } = require('../models');
 const sendEmail = require('../utils/sendEmail');
 const { sendSMS } = require('../utils/smsService');
 
+const loginAttempts = new Map();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+
+const getLoginKey = (req, email) => {
+  const normalizedEmail = typeof email === 'string' ? email.toLowerCase().trim() : 'unknown';
+  return `${req.ip || 'unknown'}:${normalizedEmail}`;
+};
+
+const isLoginWindowExpired = (attempt) => {
+  if (!attempt || !attempt.firstAttempt) return true;
+  return Date.now() - attempt.firstAttempt >= LOGIN_WINDOW_MS;
+};
+
+const recordFailedLogin = (req, email) => {
+  const key = getLoginKey(req, email);
+  const existing = loginAttempts.get(key);
+  if (!existing || isLoginWindowExpired(existing)) {
+    loginAttempts.set(key, { count: 1, firstAttempt: Date.now() });
+  } else {
+    loginAttempts.set(key, { count: existing.count + 1, firstAttempt: existing.firstAttempt });
+  }
+};
+
+const resetLoginAttempts = (req, email) => {
+  loginAttempts.delete(getLoginKey(req, email));
+};
+
+const hasExceededLoginAttempts = (req, email) => {
+  const attempt = loginAttempts.get(getLoginKey(req, email));
+  if (!attempt) return false;
+  if (isLoginWindowExpired(attempt)) {
+    loginAttempts.delete(getLoginKey(req, email));
+    return false;
+  }
+  return attempt.count >= MAX_LOGIN_ATTEMPTS;
+};
+
 // @desc    Check if email exists
 // @route   POST /api/auth/check-email
 // @access  Public
@@ -251,6 +289,10 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: 'Email and password are required' });
     }
 
+    if (hasExceededLoginAttempts(req, email)) {
+      return res.status(429).json({ message: 'Too many failed login attempts. Please try again later.' });
+    }
+
     // Case-insensitive email lookup
     const user = await User.findOne({
       where: sequelize.where(
@@ -259,15 +301,22 @@ exports.login = async (req, res) => {
       )
     });
 
-    if (!user) {
+    const invalidResponse = () => {
+      recordFailedLogin(req, email);
       return res.status(400).json({ message: 'Invalid credentials' });
+    };
+
+    if (!user) {
+      return invalidResponse();
     }
 
     // Check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return invalidResponse();
     }
+
+    resetLoginAttempts(req, email);
 
     // Create JWT Payload
     const payload = {

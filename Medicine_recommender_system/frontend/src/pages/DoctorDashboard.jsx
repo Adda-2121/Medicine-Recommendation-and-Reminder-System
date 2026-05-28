@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { AuthContext } from '../contexts/AuthContext';
+import { useTranslation } from 'react-i18next';
 import { 
   Users, 
   MessageSquare, 
@@ -27,6 +28,7 @@ import { REFERRAL_SPECIALIST_TYPES, getReferEligibility } from '../utils/referra
 const DoctorDashboard = () => {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('overview');
   
   // Overview State
@@ -181,9 +183,9 @@ const DoctorDashboard = () => {
   };
 
   const summaryCards = [
-    { title: 'Pending Patients', value: stats.pending, icon: Users, color: 'text-amber-600', bg: 'bg-amber-100' },
-    { title: 'Active Chats', value: stats.activeChats, icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-100' },
-    { title: 'Completed', value: stats.completed, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-100' },
+    { title: t('doctorDashboard.stats.pendingConsultations'), value: stats.pending, icon: Users, color: 'text-amber-600', bg: 'bg-amber-100' },
+    { title: t('doctorDashboard.stats.activeChats'), value: stats.activeChats, icon: MessageSquare, color: 'text-blue-600', bg: 'bg-blue-100' },
+    { title: t('doctorDashboard.stats.completedCases'), value: stats.completed, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-100' },
   ];
 
   return (
@@ -261,20 +263,20 @@ const DoctorDashboard = () => {
           onClick={() => setActiveTab('overview')}
           className={`py-3 px-6 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'overview' ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
         >
-          Overview & Patients
+          {t('doctorDashboard.tabs.overview')}
         </button>
         
         <button 
           onClick={() => setActiveTab('history')}
           className={`py-3 px-6 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'history' ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
         >
-          Clinical History
+          {t('doctorDashboard.tabs.history')}
         </button>
         <button 
           onClick={() => setActiveTab('reviews')}
           className={`py-3 px-6 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'reviews' ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
         >
-          My Reviews
+          {t('doctorDashboard.tabs.reviews')}
         </button>
       </div>
 

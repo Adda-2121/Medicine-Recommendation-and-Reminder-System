@@ -1,7 +1,8 @@
 import React, { useContext } from 'react';
 import { Link, Outlet } from 'react-router-dom';
-import { Activity, LayoutDashboard } from 'lucide-react';
+import { Activity, LayoutDashboard, Linkedin, Send, Mail, Github } from 'lucide-react';
 import ProfessionalLanguageSwitcher from '../components/common/ProfessionalLanguageSwitcher';
+import ContactForm from '../components/common/ContactForm';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../contexts/AuthContext';
 
@@ -55,8 +56,31 @@ export const PublicLayout = () => {
     <main className="flex-1 flex flex-col">
       <Outlet />
     </main>
-    <footer className="bg-slate-900 text-slate-400 py-8 text-center mt-auto">
-      <p>&copy; {new Date().getFullYear()} HealthConnect. All rights reserved.</p>
+    <footer className="bg-slate-900 text-slate-400 py-10 mt-auto">
+      <div className="container mx-auto px-6">
+        <div className="flex flex-col items-center gap-4">
+          <p className="text-slate-400 uppercase tracking-[0.35em] text-xs">Contact</p>
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            <a href="mailto:addisugebeyehu519@gmail.com" className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800 px-4 py-2 text-slate-200 transition hover:bg-slate-700 hover:text-white">
+              <Mail size={16} />
+              Email
+            </a>
+            <a href="https://www.linkedin.com/in/addisu-gebeyehu-603656346" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800 px-4 py-2 text-slate-200 transition hover:bg-slate-700 hover:text-white">
+              <Linkedin size={16} />
+              LinkedIn
+            </a>
+            <a href="https://t.me/Dadgeb" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800 px-4 py-2 text-slate-200 transition hover:bg-slate-700 hover:text-white">
+              <Send size={16} />
+              Telegram
+            </a>
+            <a href="https://github.com/Adda-2121" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800 px-4 py-2 text-slate-200 transition hover:bg-slate-700 hover:text-white">
+              <Github size={16} />
+              GitHub
+            </a>
+          </div>
+          <p className="text-slate-500 text-sm">&copy; {new Date().getFullYear()} HealthConnect. All rights reserved.</p>
+        </div>
+      </div>
     </footer>
   </div>
 )};
@@ -314,10 +338,10 @@ export const Features = () => {
       <div className="text-center mb-16">
         <div className="inline-flex items-center space-x-2 bg-primary-50 text-primary-700 px-4 py-2 rounded-full mb-6 border border-primary-100 shadow-sm">
           <Activity size={18} className="text-primary-600" />
-          <span className="font-bold text-sm uppercase tracking-wider">Platform Features</span>
+          <span className="font-bold text-sm uppercase tracking-wider">{t('publicPages.features.sectionLabel')}</span>
         </div>
         <h2 className="text-4xl md:text-5xl font-extrabold text-slate-800 mb-4 tracking-tight">{t('publicPages.features.title')}</h2>
-        <p className="text-lg text-slate-600 max-w-2xl mx-auto">Discover the powerful features that make healthcare accessible and efficient</p>
+        <p className="text-lg text-slate-600 max-w-2xl mx-auto">{t('publicPages.features.description')}</p>
       </div>
       
       <div className="grid md:grid-cols-3 gap-8">
@@ -364,6 +388,39 @@ export const Features = () => {
   </section>
 )};
 
+export const Contact = () => {
+  const { t } = useTranslation();
+
+  return (
+    <section className="py-24 bg-slate-50 min-h-[calc(100vh-5rem)]">
+      <div className="container mx-auto px-4 max-w-4xl">
+        <div className="text-center mb-12">
+          <span className="inline-flex items-center justify-center rounded-full bg-primary-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-primary-700 mb-4">
+            {t('publicPages.contact.title')}
+          </span>
+          <h1 className="text-5xl md:text-6xl font-extrabold text-slate-900 mb-4 tracking-tight">{t('publicPages.contact.subtitle')}</h1>
+          <p className="mx-auto max-w-2xl text-lg text-slate-600 leading-relaxed">
+            {t('publicPages.contact.desc')}
+          </p>
+        </div>
+
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-xl md:p-10">
+          <div className="mb-8">
+            <p className="text-sm font-semibold uppercase tracking-[0.35em] text-primary-700 mb-3">{t('publicPages.contact.sectionLabel')}</p>
+            <h2 className="text-3xl font-extrabold text-slate-900 mb-2">{t('publicPages.contact.sectionTitle')}</h2>
+            <p className="text-slate-600">{t('publicPages.contact.sectionDescription')}</p>
+          </div>
+          <ContactForm recipientEmail="addisugebeyehu519@gmail.com" />
+        </div>
+
+        <div className="mt-8 text-center text-slate-600">
+          <p className="text-sm">{t('publicPages.contact.footerNote')}</p>
+        </div>
+      </div>
+    </section>
+  );
+};
+
 export const About = () => {
   const { t } = useTranslation();
   return (
@@ -373,13 +430,13 @@ export const About = () => {
         <div className="text-center mb-20">
           <div className="inline-flex items-center space-x-2 bg-primary-50 text-primary-700 px-4 py-2 rounded-full mb-6 border border-primary-100 shadow-sm">
             <Activity size={18} className="text-primary-600" />
-            <span className="font-bold text-sm uppercase tracking-wider">About HealthConnect</span>
+            <span className="font-bold text-sm uppercase tracking-wider">{t('publicPages.about.headerLabel')}</span>
           </div>
           <h1 className="text-5xl md:text-6xl font-extrabold text-slate-800 mb-6 tracking-tight">
             {t('publicPages.about.title')}
           </h1>
           <p className="text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed">
-            Transforming healthcare delivery through innovative technology and compassionate care
+            {t('publicPages.about.heroDesc')}
           </p>
         </div>
 
@@ -388,8 +445,8 @@ export const About = () => {
           <div className="flex-1 lg:order-2">
             <div className="relative rounded-3xl overflow-hidden shadow-2xl border-8 border-white transform hover:scale-[1.02] transition-transform duration-500">
               <img
-                src="/ethiopian-healthcare-about.png"
-                alt="Ethiopian Healthcare Innovation"
+                src="/hero-doctor-ethiopian.png"
+                alt="Professional healthcare team"
                 className="w-full h-[500px] object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-900/50 via-transparent to-transparent"></div>
@@ -398,15 +455,15 @@ export const About = () => {
               <div className="absolute bottom-6 left-6 right-6 flex gap-4">
                 <div className="flex-1 bg-white/95 backdrop-blur-sm p-4 rounded-2xl shadow-lg">
                   <p className="text-3xl font-extrabold text-primary-600">1000+</p>
-                  <p className="text-xs text-slate-600 font-semibold">Happy Patients</p>
+                  <p className="text-xs text-slate-600 font-semibold">{t('publicPages.about.cardHappyPatients')}</p>
                 </div>
                 <div className="flex-1 bg-white/95 backdrop-blur-sm p-4 rounded-2xl shadow-lg">
                   <p className="text-3xl font-extrabold text-emerald-600">50+</p>
-                  <p className="text-xs text-slate-600 font-semibold">Expert Doctors</p>
+                  <p className="text-xs text-slate-600 font-semibold">{t('publicPages.about.cardExpertDoctors')}</p>
                 </div>
                 <div className="flex-1 bg-white/95 backdrop-blur-sm p-4 rounded-2xl shadow-lg">
                   <p className="text-3xl font-extrabold text-amber-600">24/7</p>
-                  <p className="text-xs text-slate-600 font-semibold">Support</p>
+                  <p className="text-xs text-slate-600 font-semibold">{t('publicPages.about.cardSupport')}</p>
                 </div>
               </div>
             </div>
@@ -419,7 +476,7 @@ export const About = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
-              Our Story
+              {t('publicPages.about.storyLabel')}
             </h2>
             <div className="space-y-5 text-slate-600 leading-relaxed">
               <p className="text-lg font-medium text-slate-700">
@@ -438,19 +495,19 @@ export const About = () => {
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
-                <span className="font-semibold text-sm">Verified Professionals</span>
+                <span className="font-semibold text-sm">{t('publicPages.about.badgeVerified')}</span>
               </div>
               <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-full border border-blue-200">
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
-                <span className="font-semibold text-sm">Secure Platform</span>
+                <span className="font-semibold text-sm">{t('publicPages.about.badgeSecure')}</span>
               </div>
               <div className="flex items-center gap-2 bg-amber-50 text-amber-700 px-4 py-2 rounded-full border border-amber-200">
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
-                <span className="font-semibold text-sm">24/7 Available</span>
+                <span className="font-semibold text-sm">{t('publicPages.about.badgeAlwaysAvailable')}</span>
               </div>
             </div>
           </div>
@@ -467,7 +524,7 @@ export const About = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
                 </svg>
               </div>
-              <h3 className="text-3xl font-bold text-slate-800 mb-4">Our Mission</h3>
+              <h3 className="text-3xl font-bold text-slate-800 mb-4">{t('publicPages.about.missionHeading')}</h3>
               <p className="text-slate-600 leading-relaxed text-lg">
                 {t('publicPages.about.mission')}
               </p>
@@ -475,26 +532,26 @@ export const About = () => {
           </div>
 
           {/* Values Card */}
-          <div className="bg-gradient-to-br from-primary-600 to-primary-700 p-10 rounded-3xl shadow-xl text-white relative overflow-hidden group">
-            <div className="absolute bottom-0 left-0 w-40 h-40 bg-white/10 rounded-full translate-y-1/2 -translate-x-1/2 group-hover:scale-150 transition-transform duration-500"></div>
+          <div className="bg-gradient-to-br from-cyan-100 via-cyan-200 to-teal-100 p-10 rounded-3xl shadow-xl text-slate-900 relative overflow-hidden group">
+            <div className="absolute bottom-0 left-0 w-40 h-40 bg-white/40 rounded-full translate-y-1/2 -translate-x-1/2 group-hover:scale-150 transition-transform duration-500"></div>
             <div className="relative z-10">
-              <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center mb-6 shadow-lg">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-16 h-16 bg-white/70 backdrop-blur-sm rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+                <svg className="w-8 h-8 text-cyan-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h3 className="text-3xl font-bold mb-6 flex items-center gap-3">
+              <h3 className="text-3xl font-bold mb-6 flex items-center gap-3 text-slate-900">
                 {t('publicPages.about.prioritize.title')}
               </h3>
               <ul className="space-y-4">
                 {(t('publicPages.about.prioritize.items', { returnObjects: true }) || []).map((item, index) => (
                   <li key={index} className="flex items-start gap-3 group/item">
-                    <div className="mt-1 w-6 h-6 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0 group-hover/item:bg-white/30 transition-colors">
-                      <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <div className="mt-1 w-6 h-6 rounded-lg bg-white/70 backdrop-blur-sm flex items-center justify-center shrink-0 group-hover/item:bg-white transition-colors">
+                      <svg className="w-4 h-4 text-cyan-700" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                       </svg>
                     </div>
-                    <span className="text-primary-50 font-medium text-lg">{item}</span>
+                    <span className="text-slate-900 font-medium text-lg">{item}</span>
                   </li>
                 ))}
               </ul>
@@ -513,7 +570,7 @@ export const About = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                 </svg>
               </div>
-              <h3 className="text-4xl font-extrabold text-slate-800 mb-6">Our Vision</h3>
+              <h3 className="text-4xl font-extrabold text-slate-800 mb-6">{t('publicPages.about.visionHeading')}</h3>
               <div className="relative">
                 <svg className="absolute -left-4 -top-4 w-12 h-12 text-primary-200 opacity-50" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
@@ -533,7 +590,7 @@ export const About = () => {
         {/* Call to Action */}
         <div className="mt-20 text-center">
           <Link to="/register" className="inline-flex items-center gap-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white px-10 py-5 rounded-full shadow-xl hover:shadow-2xl hover:from-primary-700 hover:to-primary-800 transition-all font-bold text-lg group">
-            Join Our Healthcare Community
+            {t('publicPages.about.ctaButton')}
             <svg className="w-6 h-6 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
             </svg>
@@ -543,76 +600,4 @@ export const About = () => {
     </section>
   );
 };
-
-export const Contact = () => {
-  const { t } = useTranslation();
-  return (
-  <section className="py-24 bg-gradient-to-b from-white to-slate-50 flex-1 flex flex-col justify-center">
-    <div className="container mx-auto px-4 max-w-4xl">
-      <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden">
-        <div className="bg-gradient-to-r from-primary-600 to-primary-700 p-12 text-center text-white relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
-          <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/10 rounded-full translate-y-1/2 -translate-x-1/2"></div>
-          <div className="relative z-10">
-            <div className="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg">
-              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <h2 className="text-4xl md:text-5xl font-extrabold mb-4 tracking-tight">{t('publicPages.contact.title')}</h2>
-            <p className="text-xl text-primary-100 max-w-2xl mx-auto">{t('publicPages.contact.desc')}</p>
-          </div>
-        </div>
-        
-        <div className="p-12 text-center">
-          <div className="grid md:grid-cols-3 gap-8 mb-12">
-            <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-              <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h3 className="font-bold text-slate-800 mb-2">Email Support</h3>
-              <p className="text-sm text-slate-600">support@healthconnect.com</p>
-            </div>
-            
-            <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                </svg>
-              </div>
-              <h3 className="font-bold text-slate-800 mb-2">Phone Support</h3>
-              <p className="text-sm text-slate-600">+251 911 234 567</p>
-            </div>
-            
-            <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-              <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="font-bold text-slate-800 mb-2">Working Hours</h3>
-              <p className="text-sm text-slate-600">24/7 Available</p>
-            </div>
-          </div>
-          
-          <a 
-            href="mailto:support@healthconnect.com" 
-            className="inline-flex items-center gap-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white px-10 py-4 rounded-full shadow-lg hover:shadow-xl hover:from-primary-700 hover:to-primary-800 transition-all font-bold text-lg group"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-            {t('publicPages.contact.emailButton')}
-            <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-            </svg>
-          </a>
-          
-          <p className="mt-8 text-slate-500 text-sm">We typically respond within 24 hours</p>
-        </div>
-      </div>
-    </div>
-  </section>
-)};
+  

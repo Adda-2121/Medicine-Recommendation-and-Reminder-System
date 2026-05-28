@@ -196,11 +196,35 @@ const Register = () => {
         navigate('/patient');
       }
     } catch (err) {
-      const serverMsg = err?.response?.data?.message || err?.message || 'Registration failed';
+      const serverResponse = err?.response?.data;
+      const serverMsg = serverResponse?.message || err?.message || 'Registration failed';
       setError(serverMsg);
-      if (err?.response?.data?.errors) {
-        setFieldErrors(err.response.data.errors);
+
+      const parseErrors = (errors) => {
+        if (!errors) return {};
+        if (Array.isArray(errors)) {
+          return errors.reduce((acc, errorItem) => {
+            if (!errorItem) return acc;
+            if (typeof errorItem === 'string') {
+              acc.general = errorItem;
+            } else if (errorItem.field) {
+              acc[errorItem.field] = errorItem.message || errorItem.msg || '';
+            } else if (errorItem.param) {
+              acc[errorItem.param] = errorItem.msg || errorItem.message || '';
+            }
+            return acc;
+          }, {});
+        }
+        if (typeof errors === 'object') {
+          return errors;
+        }
+        return {};
+      };
+
+      if (serverResponse?.errors) {
+        setFieldErrors(parseErrors(serverResponse.errors));
       }
+
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setLoading(false);
